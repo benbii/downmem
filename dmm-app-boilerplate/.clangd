@@ -1,0 +1,8 @@
+# CHANGE TO YOUR INSTALLED PATH
+If:
+  PathMatch: "devApp/**/*.c"
+CompileFlags:
+  Add:
+    - "-I/home/username/.local/dmm/include/highlight"
+    - "-DNR_TASKLETS=16"
+

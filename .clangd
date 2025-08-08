@@ -1,0 +1,6 @@
+If:
+  PathMatch: "devApp/**/*.c"
+CompileFlags:
+  Add:
+    - "-IdevApp/highlight"
+    - "-DNR_TASKLETS=16"

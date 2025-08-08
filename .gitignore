@@ -1,0 +1,12 @@
+.cache
+.vscode
+build
+devApp/bins
+devApp/objdumps
+dmm-app-boilerplate/devApp/bins
+dmm-app-boilerplate/devApp/objdumps
+# under test
+hostApp/BFS
+hostApp/SPMV
+devApp/BFS.c
+devApp/SPMV.c
