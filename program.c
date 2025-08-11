@@ -61,6 +61,8 @@ static uint32_t parseImmediate(const char *imm, PCRE2_SIZE sz,
 static uint8_t parseRegister(const char* reg, PCRE2_SIZE sz);
 static DmmInstr stores(const char* fields, const PCRE2_SIZE *ovector,
                        size_t nrFields, DmmMap symbols);
+static DmmInstr subs(const char* fields, const PCRE2_SIZE *ovector,
+                       size_t nrFields, DmmMap symbols);
 static DmmInstr jumps(const char* fields, const PCRE2_SIZE *ovector,
                       size_t nrFields, DmmMap symbols);
 static DmmInstr allothers(const char* fields, const PCRE2_SIZE *ovector,
@@ -74,8 +76,11 @@ DmmInstr ObjdLnToInstr(const char* objdumpLine, size_t sz, DmmMap symbols) {
   PCRE2_SIZE* ovector = pcre2_get_ovector_pointer(instrMat) + 2, ov0 = ovector[0];
   if (objdumpLine[ov0] == 'j') {
     return jumps(objdumpLine, ovector, rc-1, symbols);
-  } else if (objdumpLine[ov0] == 's' && ovector[1] - ov0 == 2) {
-    return stores(objdumpLine, ovector, rc-1, symbols);
+  } else if (objdumpLine[ov0] == 's') {
+    if (ovector[1] - ov0 == 2)
+      return stores(objdumpLine, ovector, rc-1, symbols);
+    else if (objdumpLine[ov0 + 1] == 'u')
+      return subs(objdumpLine, ovector, rc-1, symbols);
   }
   return allothers(objdumpLine, ovector, rc-1, symbols);
 }
@@ -174,6 +179,52 @@ static DmmInstr stores(const char* fields, const PCRE2_SIZE *ovector,
       instr.ImmB = immB;
       curAt++;
     }
+  }
+  return instr;
+}
+
+static DmmInstr subs(const char* fields, const PCRE2_SIZE *ovector,
+                       size_t nrFields, DmmMap symbols) {
+  // Extract opcode
+  const char* opcode = fields + ovector[0];
+  size_t opcodeLen = ovector[1] - ovector[0];
+  DmmInstr instr = {
+    .Opcode = DmmMapFetch(DmmStrToOpcode, opcode, opcodeLen),
+  // 1. regC is required
+    .RegC = parseRegister(FIELD_AT(1)),
+    .RegA = ZeroReg, .RegB = ZeroReg,
+    .ImmA = ZeroImm, .ImmB = ZeroImm, .Cond = NoCond,
+  };
+  // Lookup opcode in stringToOpcode map
+  if (instr.Opcode == MapNoInt)
+    return instr;
+
+  if (instr.RegC == ZeroReg)
+    instr.RegC = NullReg;
+  // 2. operand 1, either reg or immediate, also required
+  int32_t myimm = (int32_t)parseImmediate(FIELD_AT(2), symbols);
+  if (myimm != badImm) instr.ImmA = -myimm; // ra - rb - immA
+  else instr.RegA = parseRegister(FIELD_AT(2));
+  // 3. operand 2, parsed similarly as operand1
+  myimm = (int32_t)parseImmediate(FIELD_AT(3), symbols);
+  if (myimm != badImm) instr.ImmA = myimm;
+  else instr.RegB = parseRegister(FIELD_AT(3));
+  assert(nrFields >= 4 && instr.ImmA != badImm);
+  assert(badReg != instr.RegC && badReg != instr.RegA && badReg != instr.RegB);
+
+  // 4. optional condition and pc
+  size_t curAt = 4;
+  if (curAt < nrFields) {
+    DmmCc cond = DmmMapFetch(DmmStrToCc, FIELD_AT(curAt));
+    if (cond != MapNoInt) {
+      instr.Cond = cond;
+      curAt++;
+    }
+  }
+  if (curAt < nrFields) {
+    uint32_t immB = parseImmediate(FIELD_AT(curAt), symbols);
+    if (immB != badImm)
+      instr.ImmB = immB;
   }
   return instr;
 }
@@ -363,6 +414,10 @@ size_t DmmPrgReadObjdump(DmmPrg *p, const char *filename, DmmMap symbols,
     DmmInstr instr = ObjdLnToInstr(line, lineSz, symbols);
     if (instr.Opcode != MapNoInt) {
       p->Iram[iramAt++] = instr;
+      if (iramAt >= IramNrInstr) {
+        fputs("UPMEM program can only hold 4096 instructions\n", stderr);
+        return 0;
+      }
       continue;
     }
 

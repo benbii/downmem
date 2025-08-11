@@ -2,17 +2,22 @@
 set -xe
 cd "$(dirname "$0")"
 
+mkdir -p build
 cmake -GNinja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release \
   -S. -Bbuild -DCMAKE_C_COMPILER=clang
 cmake --build build
 if ! test -z "$1"; then
+  U=~/.local/upmem-2024.2.0-Linux-x86_64/upmem_env.sh
+  if [ -z "$2" ]; then U="$2"; fi
   mkdir -p devApp/{bins,objdumps}
   source ~/.local/upmem-2024.2.0-Linux-x86_64/upmem_env.sh
-  for S in BS GEMV HST-L HST-S MLP OPDEMO RED SCAN-RSS SCAN-SSA SEL TRNS TS UNI VA; do
-    dpu-upmem-dpurte-clang -O3 devApp/$S.c -DNR_TASKLETS=16 -o devApp/bins/$S.ummbin
+  for S in BS GEMV HST-L HST-S MLP OPDEMO OPDEMOF \
+      RED SCAN-RSS SCAN-SSA SEL TRNS TS UNI VA; do
+    dpu-upmem-dpurte-clang -O3 devApp/$S.c -DNR_TASKLETS=16 \
+      -o devApp/bins/$S.ummbin
     llvm-objdump -t -d devApp/bins/$S.ummbin >devApp/objdumps/$S.objdump
-    llvm-objdump -s -j .atomic -j .data -j .data.__sys_host -j .data.stacks -j .mram \
-      devApp/bins/$S.ummbin >>devApp/objdumps/$S.objdump
+    llvm-objdump -s -j .atomic -j .data -j .data.__sys_host -j .data.stacks \
+      -j .mram devApp/bins/$S.ummbin >>devApp/objdumps/$S.objdump
   done
 fi
 
@@ -48,5 +53,6 @@ fi
   time build/dmmTs 327680 320 devApp/objdumps/TS.objdump
   time build/dmmUni 100000 256 devApp/objdumps/UNI.objdump
   time build/dmmVa 5242880 2560 devApp/objdumps/VA.objdump
-  time build/dmmOpdemo 131072 256 devApp/objdumps/OPDEMO.objdump 4
+  time build/dmmOpdemo 131072 256 devApp/objdumps/OPDEMO.objdump 3
+  time build/dmmOpdemof 131072 256 devApp/objdumps/OPDEMOF.objdump 3
 # fi

@@ -44,11 +44,11 @@ void DmmDpuRun(DmmDpu* d, size_t nrTasklets) {
   while (running) {
     // running = false;
     // for (size_t i = 0; i < nrTasklets; ++i) {
-    //   if (d->Timing_.Threads[i].State != RUNNABLE)
+    //   if (d->Timing.Threads[i].State != RUNNABLE)
     //     continue;
     //   running = true;
-    //   DmmDpuExecuteInstr(d, &d->Timing_.Threads[i]);
-    //   ++d->Timing_.StatNrInstrExec;
+    //   DmmDpuExecuteInstr(d, &d->Timing.Threads[i]);
+    //   ++d->Timing.StatNrInstrExec;
     // }
     DmmTlet *thrd = DmmTimingCycle(&d->Timing, nrTasklets);
     if (thrd != NULL)
@@ -215,12 +215,6 @@ void DmmDpuExecuteInstr(DmmDpu* d, DmmTlet* thread) {
     if (instr->Opcode == BOOT)
       d->Timing.Threads[va].Pc = 0;
     break;
-
-  case CLR_RUN: case TIME: case TIME_CFG: case FAULT:
-  case HASH: case HASH_S: case HASH_U:
-  case SATS: case SATS_S: case SATS_U:
-  case CMPB4: case CMPB4_S: case CMPB4_U:
-    exit(fprintf(stderr, "TODO: clrRun, timeCfg, dpuFault not implemented"));
   case NOP: return;
 
   case ADD: case ADD_S: case ADD_U:
@@ -253,23 +247,11 @@ void DmmDpuExecuteInstr(DmmDpu* d, DmmTlet* thread) {
   case LSL: case LSL_S: case LSL_U: result = va << ((vb += immA) & 31); break;
   case LSR: case LSR_S: case LSR_U: result = va >> ((vb += immA) & 31); break;
   case ASR: case ASR_S: case ASR_U:
-    result = (int32_t)va >> ((vb + immA) & 31); break;
-  // case LSL1: case LSL1_S: case LSL1_U:
-  //   vb = (vb + immA) & 31;
-  //   result = (va<<vb) | ((1<<vb)-1); break;
-  // case LSR1: case LSR1_S: case LSR1_U:
-  //   vb = (vb + immA) & 31;
-  //   result = (va >> vb) | (~0ull << (32 - vb)); break;
+    result = (int32_t)va >> ((vb += immA) & 31); break;
   case LSLX: case LSLX_S: case LSLX_U:
     vb += immA; result = va << (vb & 31) >> 32; break;
   case LSRX: case LSRX_S: case LSRX_U:
     vb += immA; result = va << 32 >> (vb & 31); break;
-  // case LSL1X: case LSL1X_S: case LSL1X_U:
-  //   vb = (vb + immA) & 31;
-  //   result = (0xffffffffull << vb) | (va << vb >> 32); break;
-  // case LSR1X: case LSR1X_S: case LSR1X_U:
-  //   vb = (vb + immA) & 31;
-  //   result = (0xffffffffull >> vb) | (va << 32 >> vb); break;
 
   case ROL_ADD: case ROL_ADD_S: case ROL_ADD_U:
     result = rotl32c((uint32_t)vb, immA & 31); break;
@@ -279,8 +261,25 @@ void DmmDpuExecuteInstr(DmmDpu* d, DmmTlet* thread) {
     result = -(vb << (immA & 31)); break;
   case LSL_ADD: case LSL_ADD_S: case LSL_ADD_U:
     result = vb << (immA & 31); break;
+
+  // case LSL1: case LSL1_S: case LSL1_U:
+  //   vb = (vb + immA) & 31;
+  //   result = (va<<vb) | ((1<<vb)-1); break;
+  // case LSR1: case LSR1_S: case LSR1_U:
+  //   vb = (vb + immA) & 31;
+  //   result = (va >> vb) | (~0ull << (32 - vb)); break;
+  // case LSL1: case LSL1_S: case LSL1_U:
+  //   vb = (vb + immA) & 31;
+  //   result = (va<<vb) | ((1<<vb)-1); break;
+  // case LSR1: case LSR1_S: case LSR1_U:
+  //   vb = (vb + immA) & 31;
+  //   result = (va >> vb) | (~0ull << (32 - vb)); break;
+  // case CLR_RUN: case TIME: case TIME_CFG: case FAULT:
+  // case HASH: case HASH_S: case HASH_U:
+  // case SATS: case SATS_S: case SATS_U:
+  // case CMPB4: case CMPB4_S: case CMPB4_U:
   default:
-    assert(false && "Opcode not suported");
+    assert(fprintf(stderr, "%s not suported\n", DmmOpStr[instr->Opcode]) && 0);
     __builtin_unreachable();
   }
 
@@ -352,8 +351,8 @@ void DmmDpuExecuteInstr(DmmDpu* d, DmmTlet* thread) {
     case NXZ: condMet = va != vb; break;
     case XLEU: condMet = va <= vb; break;
     case XGTU: condMet = va > vb; break;
-    case XLES: condMet = (int32_t)va <= (int32_t)vb; break;
-    case XGTS: condMet = (int32_t)va > (int32_t)vb; break;
+    case XLES: condMet = (int64_t)va <= (int64_t)vb; break;
+    case XGTS: condMet = (int64_t)va > (int64_t)vb; break;
     default: __builtin_unreachable();
     }
     break;
