@@ -74,3 +74,6 @@ add_executable(dmmSel hostApp/SEL.c)
 target_link_libraries(dmmSel PRIVATE dmm)
 add_executable(dmmVa hostApp/VA.c)
 target_link_libraries(dmmVa PRIVATE dmm)
+add_executable(dmmBfs hostApp/BFS/cpubfs.c
+  hostApp/BFS/dpubfsHost.c hostApp/BFS/main.c)
+target_link_libraries(dmmBfs PRIVATE dmm)

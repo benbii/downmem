@@ -6,7 +6,8 @@ devApp/objdumps
 dmm-app-boilerplate/devApp/bins
 dmm-app-boilerplate/devApp/objdumps
 # under test
-hostApp/BFS
 hostApp/SPMV
-devApp/BFS.c
 devApp/SPMV.c
+# graph data files
+hostApp/BFS/csr.txt
+hostApp/BFS/csr.txt.zst

@@ -9,7 +9,7 @@ cmake --build build
 if test -n "$1"; then
   mkdir -p devApp/{bins,objdumps}
   source "$1"
-  for S in BS GEMV HST-L HST-S MLP OPDEMO OPDEMOF \
+  for S in BFS BS GEMV HST-L HST-S MLP OPDEMO OPDEMOF \
       RED SCAN-RSS SCAN-SSA SEL TRNS TS UNI VA; do
     dpu-upmem-dpurte-clang -O3 devApp/$S.c -DNR_TASKLETS=16 \
       -o devApp/bins/$S.ummbin
@@ -34,3 +34,14 @@ time build/dmmUni 100000 256 devApp/objdumps/UNI.objdump
 time build/dmmVa 5242880 2560 devApp/objdumps/VA.objdump
 time build/dmmOpdemo 131072 256 devApp/objdumps/OPDEMO.objdump 3
 time build/dmmOpdemof 131072 256 devApp/objdumps/OPDEMOF.objdump 3
+
+if ! [ -f hostApp/BFS/csr.txt ]; then
+  wget "https://drive.usercontent.google.com/download?id=1bXYWq_4dXrJcst5jsLL3CJTeZTQCrBlr&export=download&authuser=0"
+  zstd -d hostApp/BFS/csr.txt.zst
+fi
+time build/dmmBfs simpleBFSDpu 0 hostApp/BFS/csr.txt /tmp/dmmBfsDOut \
+  devApp/objdumps/BFS.objdump 192 >/dev/null
+build/dmmBfs simpleBFSCpu 0 hostApp/BFS/csr.txt /tmp/dmmBfsCOut >/dev/null
+# Check the output is indeed correct here.
+diff /tmp/dmmBfs{C,D}Out
+rm /tmp/dmmBfs{C,D}Out
