@@ -42,14 +42,16 @@ void DmmDpuRun(DmmDpu* d, size_t nrTasklets) {
   d->Timing.Threads[0].State = RUNNABLE;
   bool running = true;
   while (running) {
-    // running = false;
-    // for (size_t i = 0; i < nrTasklets; ++i) {
-    //   if (d->Timing.Threads[i].State != RUNNABLE)
-    //     continue;
-    //   running = true;
-    //   DmmDpuExecuteInstr(d, &d->Timing.Threads[i]);
-    //   ++d->Timing.StatNrInstrExec;
-    // }
+#ifdef __DMM_FUNCTIONAL_ONLY
+    running = false;
+    for (size_t i = 0; i < nrTasklets; ++i) {
+      if (d->Timing.Threads[i].State != RUNNABLE)
+        continue;
+      running = true;
+      DmmDpuExecuteInstr(d, &d->Timing.Threads[i]);
+      ++d->Timing.StatNrInstrExec;
+    }
+#else
     DmmTlet *thrd = DmmTimingCycle(&d->Timing, nrTasklets);
     if (thrd != NULL)
       DmmDpuExecuteInstr(d, thrd);
@@ -60,6 +62,7 @@ void DmmDpuRun(DmmDpu* d, size_t nrTasklets) {
       running = true;
       break;
     }
+#endif
   }
 }
 

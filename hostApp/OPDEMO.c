@@ -33,7 +33,7 @@ static uint32_t demo32(uint32_t a, uint32_t b) {
   a += b;
   uint32_t rem = b == 0 ? 1 : (int32_t)a / (int32_t)b;
   uint32_t qut = b == 0 ? 1 : (int32_t)a % (int32_t)b;
-  if ((a & (3 << 15)) != 0)
+  if ((a & (3 << 15)) != 0 && b != 0)
     a -= __builtin_clz(b) + __builtin_popcount(b) + __builtin_ctz(b);
   a = rotl32c(a, a & 31);
   b = rotr32c(b, b & 31);
@@ -63,15 +63,15 @@ static uint64_t demo64(uint64_t a, uint64_t b) {
 // build/benchOpdemo 1024 1 OPDEMO.objdump 1
 int main(int argc, char** argv) {
   struct dpu_set_t dpuSet, dpu;
-  size_t totWords = atoi(argv[1]), nrIter = atoi(argv[4]),
-         nrDpus = atoi(argv[2]), i;
+  size_t totWords = atoi(argv[1]), nrDpus = atoi(argv[2]), i;
+  uint32_t nrIter = atoi(argv[4]);
   if (totWords % (2 * NR_TASKLETS * nrDpus) != 0) {
     totWords =
         (1 + totWords / (2 * NR_TASKLETS * nrDpus)) * 2 * NR_TASKLETS * nrDpus;
     fprintf(stderr, "Element per DPU must be a multiple of 2*NrTasklet; "
             "wrapping to %zu elements total\n", totWords);
   }
-  const size_t nrWords = totWords / nrDpus;
+  const uint32_t nrWords = totWords / nrDpus;
   DPU_ASSERT(dpu_alloc(nrDpus, NULL, &dpuSet));
   DPU_ASSERT(dpu_load(dpuSet, argv[3], NULL));
 
@@ -82,9 +82,9 @@ int main(int argc, char** argv) {
   for (size_t i = 0; i < totWords; ++i) {
     switch (i & 7) {
     case 0: case 1: case 3: case 4:
-      inputs[i] = rand(); break;
+      inputs[i] = i; break;
     case 2: case 5: case 6: case 7:
-      inputs[i] = -rand(); break;
+      inputs[i] = -i; break;
     }
   }
 

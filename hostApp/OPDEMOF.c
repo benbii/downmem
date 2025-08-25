@@ -28,15 +28,15 @@ static double demo64(double a, double b) {
 // build/dmmOpdemof 1024 1 OPDEMOF.objdump 1
 int main(int argc, char** argv) {
   struct dpu_set_t dpuSet, dpu;
-  size_t totWords = atoi(argv[1]), nrIter = atoi(argv[4]),
-         nrDpus = atoi(argv[2]), i;
+  size_t totWords = atoi(argv[1]), nrDpus = atoi(argv[2]), i;
+  uint32_t nrIter = atoi(argv[4]);
   if (totWords % (2 * NR_TASKLETS * nrDpus) != 0) {
     totWords =
         (1 + totWords / (2 * NR_TASKLETS * nrDpus)) * 2 * NR_TASKLETS * nrDpus;
     fprintf(stderr, "Element per DPU must be a multiple of 2*NrTasklet; "
             "wrapping to %zu elements total\n", totWords);
   }
-  const size_t nrWords = totWords / nrDpus;
+  const uint32_t nrWords = totWords / nrDpus;
   DPU_ASSERT(dpu_alloc(nrDpus, NULL, &dpuSet));
   DPU_ASSERT(dpu_load(dpuSet, argv[3], NULL));
 
@@ -45,13 +45,13 @@ int main(int argc, char** argv) {
   float* devRes = malloc(totWords * sizeof(double));
   srand(12345678);
   for (size_t i = 0; i < totWords; ++i) {
-    inputs[i] = 0.3 * i;
-    // switch (i & 7) {
-    // case 0: case 1: case 3: case 4:
-    //   inputs[i] = rand() / 10000.0; break;
-    // case 2: case 5: case 6: case 7:
-    //   inputs[i] = -rand() / 12345.6; break;
-    // }
+    // inputs[i] = 0.3 * i;
+    switch (i & 7) {
+    case 0: case 1: case 3: case 4:
+      inputs[i] = rand() / 10000.0; break;
+    case 2: case 5: case 6: case 7:
+      inputs[i] = -rand() / 12345.6; break;
+    }
   }
 
 // 32b demo on CPU. Currently using omp with DMM is fine *as long as OMP block

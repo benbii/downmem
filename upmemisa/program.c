@@ -387,7 +387,7 @@ static uint8_t parseRegister(const char* reg, PCRE2_SIZE sz) {
   return badReg;  // Default case
 }
 
-size_t DmmPrgReadObjdump(DmmPrg *p, const char *filename, DmmMap symbols,
+size_t DmmPrgLoadBinary(DmmPrg *p, const char *filename, DmmMap symbols,
                          bool paged[WMAINrPage]) {
   if (paged != NULL)
     memset(paged, 0, WMAINrPage);
@@ -405,8 +405,8 @@ size_t DmmPrgReadObjdump(DmmPrg *p, const char *filename, DmmMap symbols,
     if (outBufSz != 0) {
       assert(outBufSz < 128 && "Symbol length >=128 not supported!");
       // TODO: symbol names leaked!!!
-      char* n = strndup(outBuf, outBufSz);
-      DmmMapAssign(symbols, n, outBufSz, symAddr);
+      char* name = strndup(outBuf, outBufSz);
+      DmmMapAssign(symbols, name, outBufSz, symAddr);
       continue;
     }
 

@@ -3,7 +3,6 @@
  *
  */
 #include <alloc.h>
-#include <barrier.h>
 #include <defs.h>
 #include <mram.h>
 
@@ -30,10 +29,7 @@ vector_addition(T *bufferB, T *bufferA, unsigned int l_size) {
 }
 
 // Barrier
-BARRIER_INIT(my_barrier, NR_TASKLETS);
-
 extern int main_kernel1(void);
-
 int (*kernels[nr_kernels])(void) = {main_kernel1};
 
 int main(void) {
@@ -47,12 +43,6 @@ int main_kernel1() {
 #if PRINT
   printf("tasklet_id = %u\n", tasklet_id);
 #endif
-  // if (tasklet_id == 0) { // Initialize once the cycle counter
-  //   mem_reset();         // Reset the heap
-  // }
-  // Barrier
-  barrier_wait(&my_barrier);
-
   uint32_t input_size_dpu_bytes =
       DPU_INPUT_ARGUMENTS.size; // Input size per DPU in bytes
   uint32_t input_size_dpu_bytes_transfer =

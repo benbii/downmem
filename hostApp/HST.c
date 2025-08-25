@@ -51,6 +51,7 @@ int main(int argc, char **argv) {
   // Collect results from DPUs
   uint32_t dpu_bins[NUM_BINS] = {0};
 
+  printf("TODO: bulk xfer\n");
   DPU_FOREACH(set, dpu, each_dpu) {
     uint32_t result_bins[NUM_BINS];
     DPU_ASSERT(dpu_copy_from(dpu, "global_bins", 0, result_bins,
@@ -59,12 +60,12 @@ int main(int argc, char **argv) {
     for (int i = 0; i < NUM_BINS; i++)
       dpu_bins[i] += result_bins[i];
   }
-  printf("\nTODO: bulk xfer\n");
 
   // Verify results
   for (int i = 0; i < NUM_BINS; i++)
     if (host_bins[i] != dpu_bins[i])
       return fprintf(stderr, "%2d\t%u\t%u\t%s\n", i, host_bins[i], dpu_bins[i],
                      "✗");
+  dpu_free(set);
   return 0;
 }

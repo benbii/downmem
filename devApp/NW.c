@@ -1,6 +1,6 @@
+#include "moredefs.h"
 #include <alloc.h>
 #include <barrier.h>
-#include <defs.h>
 #include <mram.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -9,7 +9,7 @@
 #define MISMATCH_SCORE -1
 #define GAP_PENALTY -1
 #define MAX_TILE_SIZE 64
-BARRIER_INIT(barr_allthrd, NR_TASKLETS);
+ALL_THREADS_BARRIER_INIT();
 
 // Tile dependency data
 typedef struct {
@@ -131,7 +131,7 @@ int main() {
     }
 
     // Synchronize after each diagonal
-    barrier_wait(&barr_allthrd);
+    all_threads_barrier_wait();
   }
 
   // Prepare output halos

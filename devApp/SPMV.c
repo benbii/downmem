@@ -1,6 +1,6 @@
+#include "moredefs.h"
 #include <alloc.h>
 #include <barrier.h>
-#include <defs.h>
 #include <mram.h>
 #include <mutex.h>
 #include <stddef.h>
@@ -26,7 +26,7 @@ __mram_ptr sparse_element_t *matrix_elements =
 __host uint32_t first_row;          // First row this DPU processes
 __host int32_t result_sums[MAX_ROWS_PER_DPU]; // Sums indexed by (row - first_row)
 static int32_t local_sums[NR_TASKLETS][MAX_ROWS_PER_DPU];
-BARRIER_INIT(allthrd, NR_TASKLETS);
+ALL_THREADS_BARRIER_INIT();
 
 int main() {
   uint32_t id = me();
@@ -38,7 +38,7 @@ int main() {
     result_sums[i] = 0;
   for (uint32_t i = 0; i < MAX_ROWS_PER_DPU; i += 1)
     local_sums[id][i] = 0;
-  barrier_wait(&allthrd);
+  all_threads_barrier_wait();
 
   // Calculate work distribution among tasklets
   uint32_t elements_per_tasklet = num_elements / num_tasklets;
@@ -79,7 +79,7 @@ int main() {
     }
   }
 
-  barrier_wait(&allthrd);
+  all_threads_barrier_wait();
   // Merge local sums into global sums
   for (uint32_t i = 0; i < NR_TASKLETS; i++) {
     const uint32_t bruh = MAX_ROWS_PER_DPU / NR_TASKLETS;

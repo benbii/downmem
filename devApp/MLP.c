@@ -1,10 +1,9 @@
 /*
- * Matrix vector multiplication with multiple tasklet
- *
+ * PrIM's Matrix vector multiplication with multiple tasklet
  */
+#include "moredefs.h"
 #include <alloc.h>
 #include <barrier.h>
-#include <defs.h>
 #include <mram.h>
 
 typedef struct {
@@ -28,7 +27,7 @@ gemv(T *bufferC, T *bufferA, T *bufferB, int pos) {
 }
 
 // Barrier
-BARRIER_INIT(my_barrier, NR_TASKLETS);
+ALL_THREADS_BARRIER_INIT();
 
 // main
 int main() {
@@ -40,7 +39,7 @@ int main() {
     mem_reset();         // Reset the heap
   }
   // Barrier
-  barrier_wait(&my_barrier);
+  all_threads_barrier_wait();
 
   int32_t n_size = DPU_INPUT_ARGUMENTS.n_size;
   int32_t n_size_pad = DPU_INPUT_ARGUMENTS.n_size_pad;

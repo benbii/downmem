@@ -3,9 +3,9 @@
  * Acks: Stefano Ballarin (P&S PIM Fall 2020)
  *
  */
+#include "moredefs.h"
 #include <alloc.h>
 #include <barrier.h>
-#include <defs.h>
 #include <mram.h>
 #include <mutex.h>
 
@@ -35,7 +35,7 @@ _Bool get_and_set_done(uintptr_t done_array_step3, uintptr_t address,
                        T *read_done);
 
 // Barrier
-BARRIER_INIT(my_barrier, NR_TASKLETS);
+ALL_THREADS_BARRIER_INIT();
 
 // Mutexes
 MUTEX_INIT(tile_mutex);
@@ -61,7 +61,7 @@ int main_kernel1() {
     mem_reset();         // Reset the heap
   }
   // Barrier
-  barrier_wait(&my_barrier);
+  all_threads_barrier_wait();
 
   uintptr_t A = (uintptr_t)DPU_MRAM_HEAP_POINTER; // A in MRAM
   uintptr_t M_ = DPU_INPUT_ARGUMENTS.M_;
@@ -92,7 +92,7 @@ int main_kernel2() {
     mem_reset();         // Reset the heap
   }
   // Barrier
-  barrier_wait(&my_barrier);
+  all_threads_barrier_wait();
 
   uintptr_t A = (uintptr_t)DPU_MRAM_HEAP_POINTER;
   uintptr_t m = DPU_INPUT_ARGUMENTS.m;

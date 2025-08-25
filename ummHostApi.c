@@ -5,8 +5,8 @@
 #include <sched.h>
 #endif
 
-#include "downmem.h"
 #include "dpu.h"
+#include <downmem.h>
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -142,10 +142,10 @@ cleanup:
 dpu_error_t dpu_load(struct dpu_set_t set, const char *objdmpPath, void **_) {
   bool paged[WMAINrPage];
   DmmPrg prg; DmmPrgInit(&prg);
-  size_t nrInstr = DmmPrgReadObjdump(&prg, objdmpPath, set.symbols, paged);
+  size_t nrInstr = DmmPrgLoadBinary(&prg, objdmpPath, set.symbols, paged);
   if (nrInstr == 0)
     return DPU_ERR_ELF_INVALID_FILE;
-  uint64_t *prgWma = (uint64_t*)prg.WMAram;
+  uint8_t *prgWma = prg.WMAram;
 
   #pragma omp parallel num_threads(nrXferCore)
   {
@@ -162,7 +162,7 @@ dpu_error_t dpu_load(struct dpu_set_t set, const char *objdmpPath, void **_) {
       dpuId += nrCore;
     while (dpuId < set.end) {
       DmmDpu *dpu = _dptr(dpuId, set);
-      uint64_t *dpuWma = (uint64_t*)dpu->Program.WMAram;
+      uint8_t *dpuWma = dpu->Program.WMAram;
       for (size_t i = 0; i < WMAINrPage; ++i)
         if (paged[i])
           memcpy(&dpuWma[i*4096], &prgWma[i * 4096], 4096);

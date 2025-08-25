@@ -18,12 +18,14 @@ if test -n "$1"; then
   done
 fi
 
-time build/dmmVaSimple 131072 256 devApp/objdumps/VA-SIMPLE.objdump
+# time build/dmmVaSimple 131072 256 devApp/objdumps/VA-SIMPLE.objdump
 time build/dmmBs 5242880 640 devApp/objdumps/BS.objdump
 time build/dmmCompact 5242880 2560 devApp/objdumps/COMPACT.objdump
 time build/dmmGemv 8192 2048 devApp/objdumps/GEMV.objdump
 time build/dmmMlp 1024 1024 devApp/objdumps/MLP.objdump
 time build/dmmNw 1500 1000 64 devApp/objdumps/NW.objdump
+time build/dmmOpdemo 131072 256 devApp/objdumps/OPDEMO.objdump 3
+time build/dmmOpdemof 131072 256 devApp/objdumps/OPDEMOF.objdump 3
 time build/dmmRed 5242880 2560 devApp/objdumps/RED.objdump
 time build/dmmScan 3276800 1600 devApp/objdumps/SCAN.objdump
 time build/dmmSpmv 9999 666 devApp/objdumps/SPMV.objdump
@@ -31,8 +33,6 @@ time build/dmmTrns 2000 200 devApp/objdumps/TRNS.objdump
 time build/dmmTs 327680 320 devApp/objdumps/TS.objdump
 time build/dmmUni 100000 256 devApp/objdumps/UNI.objdump
 time build/dmmVa 5242880 2560 devApp/objdumps/VA.objdump
-time build/dmmOpdemo 131072 256 devApp/objdumps/OPDEMO.objdump 3
-time build/dmmOpdemof 131072 256 devApp/objdumps/OPDEMOF.objdump 3
 
 if ! [ -f hostApp/BFS/csr.txt ]; then
   wget "https://drive.usercontent.google.com/download?id=1bXYWq_4dXrJcst5jsLL3CJTeZTQCrBlr&export=download&authuser=0"

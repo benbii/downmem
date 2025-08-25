@@ -1,6 +1,6 @@
+#include "moredefs.h"
 #include <alloc.h>
 #include <barrier.h>
-#include <defs.h>
 #include <mram.h>
 #include <mutex.h>
 
@@ -30,7 +30,7 @@ _Static_assert(sizeof(__mram_ptr uint32_t*) == 4, "UPMEM ptr must be 4 bytes");
 #error Too few tasklets!
 #endif
 
-BARRIER_INIT(bfsBarrier, NR_TASKLETS);
+ALL_THREADS_BARRIER_INIT();
 MUTEX_INIT(nextFrontierMutex);
 
 int main() {
@@ -87,7 +87,7 @@ int main() {
   }
 
   // Wait until all tasklets have updated the current frontier
-  barrier_wait(&bfsBarrier);
+  all_threads_barrier_wait();
 
   // Identify tasklet's nodes
   uint32_t numNodesPerTasklet = (arg.nVertInDpu + NR_TASKLETS - 1) / NR_TASKLETS;

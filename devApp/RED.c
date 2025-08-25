@@ -1,12 +1,12 @@
+#include "moredefs.h"
 #include <alloc.h>
 #include <barrier.h>
-#include <defs.h>
 #include <mram.h>
 #include <mutex.h>
 
 __host uint32_t nrWord;
 __host uint32_t dpu_glob_result;
-BARRIER_INIT(myBarr, NR_TASKLETS);
+ALL_THREADS_BARRIER_INIT();
 uint32_t localRes[NR_TASKLETS];
 
 int main() {
@@ -39,7 +39,7 @@ int main() {
   }
   localRes[me()] = localSum;
 
-  barrier_wait(&myBarr);
+  all_threads_barrier_wait();
   if (me() == 0) {
     for (uint32_t i = 0; i < NR_TASKLETS; ++i)
       dpu_glob_result += localRes[i];
