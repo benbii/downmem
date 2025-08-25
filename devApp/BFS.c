@@ -102,7 +102,6 @@ int main() {
   }
 
   // Visit neighbors of the current frontier
-  mutex_id_t mutexID = MUTEX_GET(nextFrontierMutex);
   for (uint32_t node = taskletNodesStart;
   node < taskletNodesStart + taskletNumNodes; ++node) {
     uint32_t nodeTileIdx = node / 32;
@@ -124,12 +123,12 @@ int main() {
         if (!bitIsSet(visitedTile, neighbor % 64)) {
           // Neighbor not previously visited
           // Add neighbor to next frontier
-          mutex_lock(mutexID);
+          mutex_lock(nextFrontierMutex);
           // TODO: Optimize: use more locks to reduce contention
           uint64_t nextFrontierTile = arg.nxtFrontOff[neighborTileIdx];
           setOneBit(nextFrontierTile, neighbor % 64);
           arg.nxtFrontOff[neighborTileIdx] = nextFrontierTile;
-          mutex_unlock(mutexID);
+          mutex_unlock(nextFrontierMutex);
         }
       }
     }

@@ -155,7 +155,7 @@ int main(int argc, char **argv) {
   // Copy input arguments to DPU
   DPU_FOREACH(dpu_set, dpu, i) {
     input_args[i].max_rows = max_rows_per_dpu;
-    DPU_ASSERT(dpu_prepare_xfer(dpu, input_args + i));
+    dpu_prepare_xfer(dpu, input_args + i);
   }
   DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0,
                            sizeof(dpu_arguments_t), DPU_XFER_DEFAULT));
@@ -163,14 +163,13 @@ int main(int argc, char **argv) {
   // Copy input array and vector
   i = 0;
   DPU_FOREACH(dpu_set, dpu, i) {
-    DPU_ASSERT(
-        dpu_prepare_xfer(dpu, A[0] + dpu_info[i].prev_rows_dpu * n_size));
+    dpu_prepare_xfer(dpu, A[0] + dpu_info[i].prev_rows_dpu * n_size);
   }
   DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME,
                            0, max_rows_per_dpu * n_size_pad * sizeof(T),
                            DPU_XFER_DEFAULT));
   i = 0;
-  DPU_FOREACH(dpu_set, dpu, i) { DPU_ASSERT(dpu_prepare_xfer(dpu, B)); }
+  DPU_FOREACH(dpu_set, dpu, i) { dpu_prepare_xfer(dpu, B); }
   DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME,
                            max_rows_per_dpu * n_size_pad * sizeof(T),
                            n_size_pad * sizeof(T), DPU_XFER_DEFAULT));
@@ -182,7 +181,7 @@ int main(int argc, char **argv) {
 
     // Copy C_dpu
     DPU_FOREACH(dpu_set, dpu, i) {
-      DPU_ASSERT(dpu_prepare_xfer(dpu, C_dpu + i * max_rows_per_dpu));
+      dpu_prepare_xfer(dpu, C_dpu + i * max_rows_per_dpu);
     }
     DPU_ASSERT(dpu_push_xfer(
         dpu_set, DPU_XFER_FROM_DPU, DPU_MRAM_HEAP_POINTER_NAME,
@@ -199,7 +198,7 @@ int main(int argc, char **argv) {
       }
     }
     i = 0;
-    DPU_FOREACH(dpu_set, dpu, i) { DPU_ASSERT(dpu_prepare_xfer(dpu, B_tmp)); }
+    DPU_FOREACH(dpu_set, dpu, i) { dpu_prepare_xfer(dpu, B_tmp); }
     DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU,
                              DPU_MRAM_HEAP_POINTER_NAME,
                              max_rows_per_dpu * n_size_pad * sizeof(T),
@@ -208,8 +207,7 @@ int main(int argc, char **argv) {
     // Copy next matrix of weights
     i = 0;
     DPU_FOREACH(dpu_set, dpu, i) {
-      DPU_ASSERT(
-          dpu_prepare_xfer(dpu, A[lay] + dpu_info[i].prev_rows_dpu * n_size));
+      dpu_prepare_xfer(dpu, A[lay] + dpu_info[i].prev_rows_dpu * n_size);
     }
     DPU_ASSERT(dpu_push_xfer(
         dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0,
@@ -220,7 +218,7 @@ int main(int argc, char **argv) {
     // Retrieve results
     i = 0;
     DPU_FOREACH(dpu_set, dpu, i) {
-      DPU_ASSERT(dpu_prepare_xfer(dpu, C_dpu + i * max_rows_per_dpu));
+      dpu_prepare_xfer(dpu, C_dpu + i * max_rows_per_dpu);
     }
     DPU_ASSERT(dpu_push_xfer(
         dpu_set, DPU_XFER_FROM_DPU, DPU_MRAM_HEAP_POINTER_NAME,

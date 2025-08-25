@@ -2,5 +2,5 @@ If:
   PathMatch: "devApp/**/*.c"
 CompileFlags:
   Add:
-    - "-IdevApp/highlight"
+    - "-I../rvisa/ummrv-rt"
     - "-DNR_TASKLETS=16"

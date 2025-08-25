@@ -10,12 +10,13 @@ extern "C" {
 #define ceilMult64(x)   ((((x) + 63)/64)*64)
 #define setOneBit(val, idx) (val) |= (1ull << (idx))
 #define bitIsSet(val, idx)  ((val) & (1ull << (idx)))
+#define INFO(fmt, ...)
 #define ERROR(fmt, ...)                                                        \
   fprintf(stderr, "\033[0;31mERROR:\033[0m   " fmt "\n", ##__VA_ARGS__)
 #define WARNING(fmt, ...)                                                      \
   fprintf(stderr, "\033[0;35mWARNING:\033[0m " fmt "\n", ##__VA_ARGS__)
-#define INFO(fmt, ...)                                                         \
-  printf("\033[0;32mINFO:\033[0m    " fmt "\n", ##__VA_ARGS__);
+// #define INFO(fmt, ...)                                                         \
+//   printf("\033[0;32mINFO:\033[0m    " fmt "\n", ##__VA_ARGS__);
 
 struct SimpleBFSArgs {
   uint32_t nVertInDpu; /* The number of nodes assigned to this DPU */

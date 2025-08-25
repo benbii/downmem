@@ -1,163 +1,49 @@
-/* Reduction with multiple tasklets */
 #include <alloc.h>
 #include <barrier.h>
 #include <defs.h>
 #include <mram.h>
+#include <mutex.h>
 
-#define BLOCK_SIZE_LOG2 8
-#define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
-#define T int64_t
-#define DIV 3 // Shift right to divide by sizeof(T)
-typedef struct {
-  uint32_t size;
-  enum kernels {
-    kernel1 = 0,
-    nr_kernels = 1,
-  } kernel;
-  T t_count;
-} dpu_arguments_t;
-typedef struct {
-  uint64_t cycles;
-  T t_count;
-} dpu_results_t;
-__host dpu_arguments_t DPU_INPUT_ARGUMENTS;
-__host dpu_results_t DPU_RESULTS[NR_TASKLETS];
+__host uint32_t nrWord;
+__host uint32_t dpu_glob_result;
+BARRIER_INIT(myBarr, NR_TASKLETS);
+uint32_t localRes[NR_TASKLETS];
 
-// Array for communication between adjacent tasklets
-T message[NR_TASKLETS];
+int main() {
+  __mram_ptr const uint32_t *dat = DPU_MRAM_HEAP_POINTER;
+  uint32_t nrWordTl = (nrWord + NR_TASKLETS - 1) / NR_TASKLETS;
+  uint32_t start = nrWordTl * me();
+  uint32_t end = start + nrWordTl;
+  if (end > nrWord)
+    end = nrWord;
 
-// Reduction in each tasklet
-T __attribute__((noinline)) reduction(T *input, unsigned int l_size) {
-  T output = 0;
-  for (unsigned int j = 0; j < l_size; j++) {
-    output += input[j];
-  }
-  return output;
-}
+  uint64_t localSum = 0;
+  uint32_t wramCache[128];
 
-// Barrier
-BARRIER_INIT(my_barrier, NR_TASKLETS);
-
-extern int main_kernel1(void);
-
-int (*kernels[nr_kernels])(void) = {main_kernel1};
-
-int main(void) {
-  // Kernel
-  return kernels[DPU_INPUT_ARGUMENTS.kernel]();
-}
-
-// main_kernel1
-int main_kernel1() {
-  unsigned int tasklet_id = me();
-#if PRINT
-  printf("tasklet_id = %u\n", tasklet_id);
-#endif
-  // if (tasklet_id == 0) { // Initialize once the cycle counter
-  //   mem_reset();         // Reset the heap
-#if PERF
-    perfcounter_config(COUNT_CYCLES, true);
-#endif
-  // }
-  // Barrier
-  barrier_wait(&my_barrier);
-
-  dpu_results_t *result = &DPU_RESULTS[tasklet_id];
-#if PERF && !PERF_SYNC
-  result->cycles = 0;
-  perfcounter_cycles cycles;
-  timer_start(&cycles); // START TIMER
-#endif
-
-  uint32_t input_size_dpu_bytes = DPU_INPUT_ARGUMENTS.size;
-  // Address of the current processing block in MRAM
-  uint32_t base_tasklet = tasklet_id << BLOCK_SIZE_LOG2;
-  uintptr_t mram_base_addr_A = (uintptr_t)DPU_MRAM_HEAP_POINTER;
-  // Initialize a local cache to store the MRAM block
-  T cache_A[BLOCK_SIZE / sizeof(T)];
-  // T* cache_A = (T*)mem_alloc(BLOCK_SIZE);
-  // Local count
-  T l_count = 0;
-
-#if !PERF_SYNC // COMMENT OUT TO COMPARE SYNC PRIMITIVES (Experiment in
-               // Appendix)
-  for (unsigned int byte_index = base_tasklet;
-       byte_index < input_size_dpu_bytes;
-       byte_index += BLOCK_SIZE * NR_TASKLETS) {
-
-    // Bound checking
-    uint32_t l_size_bytes = (byte_index + BLOCK_SIZE >= input_size_dpu_bytes)
-                                ? (input_size_dpu_bytes - byte_index)
-                                : BLOCK_SIZE;
-
-    // Load cache with current MRAM block
-    mram_read((__mram_ptr void const *)(mram_base_addr_A + byte_index), cache_A,
-              l_size_bytes);
-
-    // Reduction in each tasklet
-    l_count += reduction(cache_A, l_size_bytes >> DIV);
-  }
-#endif
-
-  // Reduce local counts
-  message[tasklet_id] = l_count;
-
-#if PERF && PERF_SYNC // TIMER FOR SYNC PRIMITIVES
-  result->cycles = 0;
-  perfcounter_cycles cycles;
-  timer_start(&cycles); // START TIMER
-#endif
-#ifdef TREE // Tree-based reduction
-#ifdef BARRIER
-  // Barrier
-  barrier_wait(&my_barrier);
-#endif
-
-#pragma unroll
-  for (unsigned int offset = 1; offset < NR_TASKLETS; offset <<= 1) {
-
-    if ((tasklet_id & (2 * offset - 1)) == 0) {
-#ifndef BARRIER
-      // Wait
-      handshake_wait_for(tasklet_id + offset);
-#endif
-      message[tasklet_id] += message[tasklet_id + offset];
+  // Process in chunks of 128 words
+  for (uint32_t i = start; i + 128 <= end; i += 128) {
+    mram_read(&dat[i], wramCache, 128 * sizeof(uint32_t));
+    for (int j = 0; j < 128; j++) {
+      localSum += wramCache[j];
     }
-
-#ifdef BARRIER
-    // Barrier
-    barrier_wait(&my_barrier);
-#else
-    else if ((tasklet_id & (offset - 1)) ==
-             0) { // Ensure that wait and notify are in pair
-      // Notify
-      handshake_notify();
-    }
-#endif
   }
 
-#else // Single-thread reduction
-  // Barrier
-  barrier_wait(&my_barrier);
-  if (tasklet_id == 0)
-#pragma unroll
-    for (unsigned int each_tasklet = 1; each_tasklet < NR_TASKLETS;
-         each_tasklet++) {
-      message[0] += message[each_tasklet];
+  // Handle remaining words
+  uint32_t remaining = end - ((end - start) / 128) * 128 - start;
+  if (remaining > 0) {
+    uint32_t lastChunkStart = end - remaining;
+    mram_read(&dat[lastChunkStart], wramCache, remaining * sizeof(uint32_t));
+    for (uint32_t j = 0; j < remaining; j++) {
+      localSum += wramCache[j];
     }
-#endif
-#if PERF && PERF_SYNC                   // TIMER FOR SYNC PRIMITIVES
-  result->cycles = timer_stop(&cycles); // STOP TIMER
-#endif
-
-  // Total count in this DPU
-  if (tasklet_id == 0) {
-    result->t_count = message[tasklet_id];
   }
+  localRes[me()] = localSum;
 
-#if PERF && !PERF_SYNC
-  result->cycles = timer_stop(&cycles); // STOP TIMER
-#endif
+  barrier_wait(&myBarr);
+  if (me() == 0) {
+    for (uint32_t i = 0; i < NR_TASKLETS; ++i)
+      dpu_glob_result += localRes[i];
+  }
 
   return 0;
 }

@@ -209,4 +209,9 @@ void bfsDPU(struct CSRDat csr, uint32_t *nodeLevel, size_t srcNode,
     }
     ++dpuIdx;
   }
+
+  dpu_free(dpuSet);
+  free(visited);
+  free(curFrontier);
+  free(nextFrontier);
 }

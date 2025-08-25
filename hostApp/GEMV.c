@@ -1,135 +1,76 @@
-#include <stdlib.h>
-#include <dpu.h>
 #include <assert.h>
+#include <dpu.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#define VECTOR_SIZE 2048
 
-struct dpu_arguments_t {
-  int n_size;
-  int n_size_pad;
-  int nr_rows;
-  int max_rows;
-};
+int main(int argc, char **argv) {
+  uint32_t matrix_rows = atoi(argv[1]);
+  uint32_t num_dpus = atoi(argv[2]);
+  const char *dpu_binary = argv[3];
+  // Force matrix rows to be divisible by number of DPUs
+  matrix_rows = (matrix_rows + num_dpus - 1) / num_dpus * num_dpus;
+  uint32_t rows_per_dpu = matrix_rows / num_dpus;
 
-struct dpu_info_t {
-  int rows_per_dpu;
-  int rows_per_dpu_pad;
-  int prev_rows_dpu;
-};
-
-void init_data(int* A, int* B, int m_size, int n_size) {
-  for (int i = 0; i < m_size * n_size; i++) { A[i] = i % 50; }
-  for (int i = 0; i < n_size; i++) { B[i] = i % 50; }
-}
-
-void gemv_host(int* C, int* A, int* B, int m_size, int n_size) {
-  for (int i = 0; i < m_size; i++) { C[i] = 0; }
-  for (int m = 0; m < m_size; m++)
-    for (int n = 0; n < n_size; n++)
-      C[m] += A[m * n_size + n] * B[n];
-}
-
-int main(int argc, char** argv) {
-  struct dpu_set_t dpu_set;
-  struct dpu_set_t dpu;
-  int nr_of_dpus = atoi(argv[2]);
-  DPU_ASSERT(dpu_alloc(nr_of_dpus, NULL, &dpu_set));
-  DPU_ASSERT(dpu_load(dpu_set, argv[3], NULL));
-  int m_size = atoi(argv[1]), n_size = 64, i;
-  if (m_size / 8 > 64) n_size = m_size / 8;
-
-  struct dpu_info_t *dpu_info = malloc(nr_of_dpus * sizeof(struct dpu_info_t));
-  struct dpu_arguments_t *input_args =
-      malloc(nr_of_dpus * sizeof(struct dpu_arguments_t));
-  int max_rows_per_dpu = 0;
-  int n_size_pad = n_size;
-  if(n_size % 2 == 1)
-    n_size_pad++;
-
-  DPU_FOREACH(dpu_set, dpu, i) {
-    int prev_rows_dpu = 0;
-    int chunks = m_size / nr_of_dpus;
-    int rows_per_dpu = chunks;
-    int rest_rows = m_size % nr_of_dpus;
-    if (i < rest_rows)
-      rows_per_dpu++;
-
-    if (rest_rows > 0) {
-      if (i >= rest_rows)
-        prev_rows_dpu = rest_rows * (chunks + 1) + (i - rest_rows) * chunks;
-      else
-        prev_rows_dpu = i * (chunks + 1);
-    } else
-      prev_rows_dpu = i * chunks;
-
-    int rows_per_dpu_pad = rows_per_dpu;
-    if (rows_per_dpu_pad % 2 == 1)
-      rows_per_dpu_pad++;
-    if (rows_per_dpu_pad > max_rows_per_dpu)
-      max_rows_per_dpu = rows_per_dpu_pad;
-
-    dpu_info[i].rows_per_dpu = rows_per_dpu;
-    dpu_info[i].rows_per_dpu_pad = rows_per_dpu_pad;
-    dpu_info[i].prev_rows_dpu = prev_rows_dpu;
-
-    input_args[i].n_size = n_size;
-    input_args[i].n_size_pad = n_size_pad;
-    input_args[i].nr_rows = rows_per_dpu;
+  // Generate random matrix and vector
+  int32_t *matrix = malloc(matrix_rows * VECTOR_SIZE * sizeof(int32_t));
+  int32_t *vector = malloc(VECTOR_SIZE * sizeof(int32_t));
+  int32_t *result = malloc(matrix_rows * sizeof(int32_t));
+  assert(matrix != NULL && vector != NULL && result != NULL);
+  srand(time(NULL));
+  for (uint32_t i = 0; i < matrix_rows * VECTOR_SIZE; i++)
+    matrix[i] = rand() % 100 - 50; // Range [-50, 49]
+  for (uint32_t i = 0; i < VECTOR_SIZE; i++)
+    vector[i] = rand() % 100 - 50; // Range [-50, 49]
+  // Compute host-side GEMV for verification
+  for (uint32_t row = 0; row < matrix_rows; row++) {
+    int64_t sum = 0;
+    for (uint32_t col = 0; col < VECTOR_SIZE; col++)
+      sum += (int64_t)matrix[row * VECTOR_SIZE + col] * vector[col];
+    result[row] = (int32_t)sum; // Truncate to int32_t
   }
 
-  int *A = malloc(max_rows_per_dpu * nr_of_dpus * n_size_pad * sizeof(int));
-  int *B = malloc(n_size_pad * sizeof(int));
-  int *C = malloc(max_rows_per_dpu * nr_of_dpus * sizeof(int));
-  init_data(A, B, m_size, n_size);
-  gemv_host(C, A, B, m_size, n_size);
-
-  DPU_FOREACH(dpu_set, dpu, i) {
-    input_args[i].max_rows = max_rows_per_dpu;
-    dpu_prepare_xfer(dpu, &input_args[i]);
+  // Initialize DPU system
+  struct dpu_set_t set, dpu;
+  uint32_t each_dpu;
+  DPU_ASSERT(dpu_alloc(num_dpus, NULL, &set));
+  DPU_ASSERT(dpu_load(set, dpu_binary, NULL));
+  // Broadcast vector to all DPUs
+  DPU_ASSERT(dpu_broadcast_to(set, "input_vector", 0, vector,
+                              VECTOR_SIZE * sizeof(int32_t), DPU_XFER_DEFAULT));
+  // Broadcast rows_per_dpu to all DPUs
+  DPU_ASSERT(dpu_broadcast_to(set, "num_rows", 0, &rows_per_dpu,
+                              sizeof(uint32_t), DPU_XFER_DEFAULT));
+  // Distribute matrix rows across DPUs
+  uint32_t row_offset = 0;
+  DPU_FOREACH(set, dpu, each_dpu) {
+    int32_t *dpu_matrix_rows = &matrix[row_offset * VECTOR_SIZE];
+    dpu_prepare_xfer(dpu, dpu_matrix_rows);
+    row_offset += rows_per_dpu;
   }
-  dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0,
-                sizeof(struct dpu_arguments_t), DPU_XFER_DEFAULT);
+  DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "__sys_used_mram_end", 0,
+                           rows_per_dpu * VECTOR_SIZE * sizeof(int32_t),
+                           DPU_XFER_DEFAULT));
+  DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
 
-  DPU_FOREACH(dpu_set, dpu, i) {
-    dpu_prepare_xfer(dpu, &A[dpu_info[i].prev_rows_dpu * n_size]);
+  // Collect results from DPUs
+  int32_t *dpu_result = malloc(matrix_rows * sizeof(int32_t));
+  assert(dpu_result != NULL);
+  row_offset = 0;
+  DPU_FOREACH(set, dpu, each_dpu) {
+    DPU_ASSERT(dpu_copy_from(dpu, "result_vector", 0, &dpu_result[row_offset],
+                             rows_per_dpu * sizeof(int32_t)));
+    row_offset += rows_per_dpu;
   }
-  dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0,
-                max_rows_per_dpu * n_size_pad * sizeof(int), DPU_XFER_DEFAULT);
 
-  DPU_FOREACH(dpu_set, dpu, i) {
-    dpu_prepare_xfer(dpu, B);
-  }
-  dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME,
-                max_rows_per_dpu * n_size_pad * sizeof(int),
-                n_size_pad * sizeof(int), DPU_XFER_DEFAULT);
+  for (uint32_t i = 0; i < matrix_rows; i++)
+    if (result[i] != dpu_result[i])
+      return fprintf(stderr, "Row %u: Host=%d, DPU=%d\n", i, result[i],
+                     dpu_result[i]);
 
-  dpu_launch(dpu_set, DPU_SYNCHRONOUS);
-
-  int *C_dpu = malloc(max_rows_per_dpu * nr_of_dpus * sizeof(int));
-  DPU_FOREACH(dpu_set, dpu, i) {
-    dpu_prepare_xfer(dpu, &C_dpu[i * max_rows_per_dpu]);
-  }
-  dpu_push_xfer(dpu_set, DPU_XFER_FROM_DPU, DPU_MRAM_HEAP_POINTER_NAME,
-                max_rows_per_dpu * n_size_pad * sizeof(int) +
-                    n_size_pad * sizeof(int),
-                max_rows_per_dpu * sizeof(int), DPU_XFER_DEFAULT);
-
-  int status = 1;
-
-  i = 0;
-  for (int n = 0; n < nr_of_dpus; n++) {
-    for (int j = 0; j < dpu_info[n].rows_per_dpu; j++) {
-      if(C[i] != C_dpu[n * max_rows_per_dpu + j]) {
-        status = 0;
-      }
-      i++;
-    }
-  }
-  assert(status);
-
-  free(A);
-  free(B);
-  free(C);
-  free(C_dpu);
-  // dpu_log_read(dpu_set, stdout);
-  dpu_free(dpu_set);
-  return status ? 0 : -1;
+  // Cleanup
+  free(matrix); free(vector); free(result); free(dpu_result);
+  DPU_ASSERT(dpu_free(set));
+  return 0;
 }

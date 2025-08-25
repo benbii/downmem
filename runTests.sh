@@ -4,30 +4,29 @@ cd "$(dirname "$0")"
 
 mkdir -p build
 cmake -GNinja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release \
-  -S. -Bbuild -DCMAKE_C_COMPILER=clang
+  -S. -Bbuild -DCMAKE_C_COMPILER=clang -DDMM_ISA=upmem
 cmake --build build
 if test -n "$1"; then
   mkdir -p devApp/{bins,objdumps}
-  source "$1"
-  for S in BFS BS GEMV HST-L HST-S MLP OPDEMO OPDEMOF \
-      RED SCAN-RSS SCAN-SSA SEL TRNS TS UNI VA; do
-    dpu-upmem-dpurte-clang -O3 devApp/$S.c -DNR_TASKLETS=16 \
-      -o devApp/bins/$S.ummbin
-    llvm-objdump -t -d devApp/bins/$S.ummbin >devApp/objdumps/$S.objdump
-    llvm-objdump -s -j .atomic -j .data -j .data.__sys_host -j .data.stacks \
+  for S in BS COMPACT GEMV MLP OPDEMO OPDEMOF SPMV \
+      NW RED SCAN TRNS TS UNI VA VA-SIMPLE; do
+    "$1/bin/clang" -O3 --target=dpu-upmem-dpurte -mcpu=v1A -g \
+      devApp/$S.c -DNR_TASKLETS=16 -o devApp/bins/$S.ummbin
+    "$1/bin/llvm-objdump" -t -d devApp/bins/$S.ummbin >devApp/objdumps/$S.objdump
+    "$1/bin/llvm-objdump" -s -j .atomic -j .data -j .data.__sys_host -j .data.stacks \
       -j .mram devApp/bins/$S.ummbin >>devApp/objdumps/$S.objdump
   done
 fi
 
+time build/dmmVaSimple 131072 256 devApp/objdumps/VA-SIMPLE.objdump
 time build/dmmBs 5242880 640 devApp/objdumps/BS.objdump
+time build/dmmCompact 5242880 2560 devApp/objdumps/COMPACT.objdump
 time build/dmmGemv 8192 2048 devApp/objdumps/GEMV.objdump
-time build/dmmHstl 2621440 1280 devApp/objdumps/HST-L.objdump
-time build/dmmHsts 2621440 1280 devApp/objdumps/HST-S.objdump
 time build/dmmMlp 1024 1024 devApp/objdumps/MLP.objdump
+time build/dmmNw 1500 1000 64 devApp/objdumps/NW.objdump
 time build/dmmRed 5242880 2560 devApp/objdumps/RED.objdump
-time build/dmmScanssa 3276800 1600 devApp/objdumps/SCAN-SSA.objdump
-time build/dmmScanrss 3276800 1600 devApp/objdumps/SCAN-RSS.objdump
-time build/dmmSel 5242880 2560 devApp/objdumps/SEL.objdump
+time build/dmmScan 3276800 1600 devApp/objdumps/SCAN.objdump
+time build/dmmSpmv 9999 666 devApp/objdumps/SPMV.objdump
 time build/dmmTrns 2000 200 devApp/objdumps/TRNS.objdump
 time build/dmmTs 327680 320 devApp/objdumps/TS.objdump
 time build/dmmUni 100000 256 devApp/objdumps/UNI.objdump
@@ -39,8 +38,7 @@ if ! [ -f hostApp/BFS/csr.txt ]; then
   wget "https://drive.usercontent.google.com/download?id=1bXYWq_4dXrJcst5jsLL3CJTeZTQCrBlr&export=download&authuser=0"
   zstd -d hostApp/BFS/csr.txt.zst
 fi
-time build/dmmBfs simpleBFSDpu 0 hostApp/BFS/csr.txt /tmp/dmmBfsDOut \
-  devApp/objdumps/BFS.objdump 192 >/dev/null
+time build/dmmBfs simpleBFSDpu 0 hostApp/BFS/csr.txt /tmp/dmmBfsDOut devApp/objdumps/BFS.objdump 192 
 build/dmmBfs simpleBFSCpu 0 hostApp/BFS/csr.txt /tmp/dmmBfsCOut >/dev/null
 # Check the output is indeed correct here.
 diff /tmp/dmmBfs{C,D}Out

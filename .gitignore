@@ -2,12 +2,10 @@
 .vscode
 build
 devApp/bins
+devApp/rvbins
 devApp/objdumps
 dmm-app-boilerplate/devApp/bins
 dmm-app-boilerplate/devApp/objdumps
-# under test
-hostApp/SPMV
-devApp/SPMV.c
 # graph data files
 hostApp/BFS/csr.txt
 hostApp/BFS/csr.txt.zst
