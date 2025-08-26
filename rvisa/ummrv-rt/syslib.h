@@ -1,5 +1,5 @@
-#ifndef SYSLIB_H
-#define SYSLIB_H
+#ifndef DMMRV_SYSLIB_H
+#define DMMRV_SYSLIB_H
 
 #include <stdint.h>
 #include <stddef.h>

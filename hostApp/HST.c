@@ -15,8 +15,8 @@ int main(int argc, char **argv) {
   uint32_t elements_per_dpu = num_elements / num_dpus;
 
   // Initialize DPU system
-  struct dpu_set_t set, dpu;
-  uint32_t each_dpu;
+  struct dpu_set_t set, each;
+  size_t idx_dpu;
   DPU_ASSERT(dpu_alloc(num_dpus, NULL, &set));
   DPU_ASSERT(dpu_load(set, dpu_binary, NULL));
 
@@ -37,8 +37,8 @@ int main(int argc, char **argv) {
 
   // Distribute data across DPUs (simplified - each DPU gets same amount)
   uint32_t offset = 0;
-  DPU_FOREACH(set, dpu, each_dpu) {
-    dpu_prepare_xfer(dpu, input_data + offset);
+  DPU_FOREACH(set, each, idx_dpu) {
+    dpu_prepare_xfer(each, input_data + offset);
     offset += elements_per_dpu;
   }
   DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "__sys_used_mram_end", 0,
@@ -51,14 +51,16 @@ int main(int argc, char **argv) {
   // Collect results from DPUs
   uint32_t dpu_bins[NUM_BINS] = {0};
 
-  printf("TODO: bulk xfer\n");
-  DPU_FOREACH(set, dpu, each_dpu) {
-    uint32_t result_bins[NUM_BINS];
-    DPU_ASSERT(dpu_copy_from(dpu, "global_bins", 0, result_bins,
-                             NUM_BINS * sizeof(uint32_t)));
-    // Accumulate results
+  uint32_t result_bins[num_dpus][NUM_BINS];
+  DPU_FOREACH(set, each, idx_dpu) {
+    dpu_prepare_xfer(each, result_bins[idx_dpu]);
+  }
+  DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_FROM_DPU, "global_bins", 0,
+                           NUM_BINS * sizeof(uint32_t), DPU_XFER_DEFAULT));
+  // Accumulate results
+  DPU_FOREACH(set, each, idx_dpu) {
     for (int i = 0; i < NUM_BINS; i++)
-      dpu_bins[i] += result_bins[i];
+      dpu_bins[i] += result_bins[idx_dpu][i];
   }
 
   // Verify results

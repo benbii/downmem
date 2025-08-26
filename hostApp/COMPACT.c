@@ -11,8 +11,8 @@ int main(int argc, char **argv) {
   num_elements = (num_elements + num_dpus - 1) / num_dpus * num_dpus;
   uint32_t elements_per_dpu = num_elements / num_dpus;
   // Initialize DPU system
-  struct dpu_set_t set, dpu;
-  uint32_t each_dpu;
+  struct dpu_set_t set, each;
+  size_t idx_dpu;
   DPU_ASSERT(dpu_alloc(num_dpus, NULL, &set));
   DPU_ASSERT(dpu_load(set, dpu_binary, NULL));
 
@@ -37,8 +37,8 @@ int main(int argc, char **argv) {
 
   // Distribute data across DPUs (8-byte aligned)
   uint32_t offset = 0;
-  DPU_FOREACH(set, dpu, each_dpu) {
-    dpu_prepare_xfer(dpu, input_data + offset);
+  DPU_FOREACH(set, each, idx_dpu) {
+    dpu_prepare_xfer(each, input_data + offset);
     offset += elements_per_dpu;
   }
   DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "__sys_used_mram_end", 0,
@@ -50,43 +50,43 @@ int main(int argc, char **argv) {
   DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
 
   // Get the total count of elements from each DPU
-  uint32_t total_output = 0;
+  uint32_t max_output = 0;
   uint32_t *dpu_counts = malloc(num_dpus * sizeof(uint32_t));
   assert(dpu_counts != NULL);
-  DPU_FOREACH(set, dpu, each_dpu) {
-    DPU_ASSERT(dpu_copy_from(dpu, "out_at", 0, &dpu_counts[each_dpu],
-                             sizeof(uint32_t)));
-    total_output += dpu_counts[each_dpu];
+  DPU_FOREACH(set, each, idx_dpu) {
+    dpu_prepare_xfer(each, &dpu_counts[idx_dpu]);
   }
-  printf("TODO bulk xfer %u\n", total_output);
+  DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_FROM_DPU, "out_at", 0,
+                           sizeof(uint32_t), DPU_XFER_DEFAULT));
+  DPU_FOREACH(set, each, idx_dpu) {
+    if (dpu_counts[idx_dpu] > max_output)
+      max_output = dpu_counts[idx_dpu];
+  }
+
   // Collect all output elements from DPUs
-  uint32_t *dpu_result = malloc(total_output * sizeof(uint32_t));
+  uint32_t *dpu_result = calloc(max_output, num_dpus * sizeof(uint32_t));
   assert(dpu_result != NULL);
-  uint32_t result_offset = 0;
-  DPU_FOREACH(set, dpu, each_dpu) {
-    if (dpu_counts[each_dpu] > 0) {
-      DPU_ASSERT(dpu_copy_from(dpu, "output_data", 0,
-                               &dpu_result[result_offset],
-                               dpu_counts[each_dpu] * sizeof(uint32_t)));
-      result_offset += dpu_counts[each_dpu];
-    }
+  DPU_FOREACH(set, each, idx_dpu) {
+    dpu_prepare_xfer(each, &dpu_result[max_output * idx_dpu]);
   }
+  dpu_push_xfer(set, DPU_XFER_FROM_DPU, "output_data", 0,
+                max_output * sizeof(uint32_t), DPU_XFER_DEFAULT);
 
   // Count actual odd numbers (ignore padding zeros)
   size_t actual_odds = 0;
-  for (uint32_t i = 0; i < total_output; i++) {
-    if (dpu_result[i] == 0) {
-      continue;
-    } else if (dpu_result[i] % 2 == 0) {
-      return fprintf(stderr, "ERROR - Even number found at index %u: %u\n", i,
-                     dpu_result[i]);
-    } else {
+  DPU_FOREACH(set, each, idx_dpu) {
+    for (uint32_t i = 0; i < dpu_counts[idx_dpu]; i++) {
+      uint32_t targ = dpu_result[max_output * idx_dpu + i];
+      if (targ == 0)
+        continue;
+      if (targ % 2 == 0)
+        return fprintf(stderr, "Even num at index %u dpu %zu\n", i, idx_dpu);
       actual_odds++; // Valid odd number
     }
   }
   // Check if we got the expected number of odd numbers
   if (actual_odds != expected_odds) {
-    for (size_t i = 0; i < total_output; ++i)
+    for (size_t i = 0; i < max_output; ++i)
       fprintf(stderr, "%u ", dpu_result[i]);
     return fprintf(stderr, "\nFAIL - Expected %u, got %zu odd numbers\n",
                    expected_odds, actual_odds);

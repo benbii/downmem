@@ -32,8 +32,8 @@ int main(int argc, char **argv) {
   }
 
   // Initialize DPU system
-  struct dpu_set_t set, dpu;
-  uint32_t each_dpu;
+  struct dpu_set_t set, each;
+  uint32_t idx_dpu;
   DPU_ASSERT(dpu_alloc(num_dpus, NULL, &set));
   DPU_ASSERT(dpu_load(set, dpu_binary, NULL));
   // Broadcast vector to all DPUs
@@ -44,9 +44,9 @@ int main(int argc, char **argv) {
                               sizeof(uint32_t), DPU_XFER_DEFAULT));
   // Distribute matrix rows across DPUs
   uint32_t row_offset = 0;
-  DPU_FOREACH(set, dpu, each_dpu) {
+  DPU_FOREACH(set, each, idx_dpu) {
     int32_t *dpu_matrix_rows = &matrix[row_offset * VECTOR_SIZE];
-    dpu_prepare_xfer(dpu, dpu_matrix_rows);
+    dpu_prepare_xfer(each, dpu_matrix_rows);
     row_offset += rows_per_dpu;
   }
   DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "__sys_used_mram_end", 0,
@@ -58,11 +58,12 @@ int main(int argc, char **argv) {
   int32_t *dpu_result = malloc(matrix_rows * sizeof(int32_t));
   assert(dpu_result != NULL);
   row_offset = 0;
-  DPU_FOREACH(set, dpu, each_dpu) {
-    DPU_ASSERT(dpu_copy_from(dpu, "result_vector", 0, &dpu_result[row_offset],
-                             rows_per_dpu * sizeof(int32_t)));
+  DPU_FOREACH(set, each, idx_dpu) {
+    dpu_prepare_xfer(each, &dpu_result[row_offset]);
     row_offset += rows_per_dpu;
   }
+  dpu_push_xfer(set, DPU_XFER_FROM_DPU, "result_vector", 0,
+                rows_per_dpu * sizeof(int32_t), DPU_XFER_DEFAULT);
 
   for (uint32_t i = 0; i < matrix_rows; i++)
     if (result[i] != dpu_result[i])

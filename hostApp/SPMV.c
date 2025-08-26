@@ -18,8 +18,8 @@ int main(int argc, char **argv) {
   uint32_t num_dpus = atoi(argv[2]);
   const char *dpu_binary = argv[3];
   // Initialize DPU system
-  struct dpu_set_t set, dpu;
-  uint32_t each_dpu;
+  struct dpu_set_t set, each;
+  size_t idx_dpu;
   DPU_ASSERT(dpu_alloc(num_dpus, NULL, &set));
   DPU_ASSERT(dpu_load(set, dpu_binary, NULL));
 
@@ -83,8 +83,8 @@ int main(int argc, char **argv) {
                               sizeof(uint32_t), DPU_XFER_DEFAULT));
   // Distribute matrix elements across DPUs
   uint32_t elem_offset = 0;
-  DPU_FOREACH(set, dpu, each_dpu) {
-    dpu_prepare_xfer(dpu, &matrix[elem_offset]);
+  DPU_FOREACH(set, each, idx_dpu) {
+    dpu_prepare_xfer(each, &matrix[elem_offset]);
     elem_offset += elements_per_dpu;
   }
   DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "__sys_used_mram_end", 0,
@@ -96,28 +96,31 @@ int main(int argc, char **argv) {
   // Collect results using simplified bulk transfer (TODO: use bulk xfer)
   printf("TODO: use bulk xfer...\n");
   int32_t *dpu_result = calloc(matrix_rows, sizeof(int32_t));
+  uint32_t first_row[num_dpus];
+  int32_t *result_sums = calloc(num_dpus, 64 * sizeof(int32_t));
   assert(dpu_result != NULL);
-  DPU_FOREACH(set, dpu, each_dpu) {
-    uint32_t first_row;
-    int32_t result_sums[64]; // MAX_ROWS_PER_DPU
-    // Get first_row and all 64 result sums
-    DPU_ASSERT(dpu_copy_from(dpu, "first_row", 0, &first_row, sizeof(uint32_t)));
-    DPU_ASSERT(dpu_copy_from(dpu, "result_sums", 0, result_sums, 64 * sizeof(int32_t)));
-    // Add all results unconditionally
-    for (uint16_t i = 0; i < 64; i++) {
-      uint16_t row_id = first_row + i;
-      if (row_id < matrix_rows) {
-        dpu_result[row_id] += result_sums[i];
-      }
+  // Get first_row and all 64 result sums
+  DPU_FOREACH(set, each, idx_dpu) {
+    dpu_prepare_xfer(each, &first_row[idx_dpu]);
+  }
+  dpu_push_xfer(set, DPU_XFER_FROM_DPU, "first_row", 0, 4, DPU_XFER_DEFAULT);
+  DPU_FOREACH(set, each, idx_dpu) {
+    dpu_prepare_xfer(each, &result_sums[idx_dpu * 64]);
+  }
+  dpu_push_xfer(set, DPU_XFER_FROM_DPU, "result_sums", 0, 256, DPU_XFER_DEFAULT);
+  // Add all results unconditionally
+  DPU_FOREACH(set, each, idx_dpu) {
+    for (size_t i = 0; i < 64; i++) {
+      size_t row_id = first_row[idx_dpu] + i;
+      dpu_result[row_id] += result_sums[idx_dpu * 64 + i];
     }
   }
+  free(result_sums);
 
-  for (uint32_t i = 0; i < matrix_rows; i++) {
-    if (host_result[i] != dpu_result[i]) {
+  for (uint32_t i = 0; i < matrix_rows; i++)
+    if (host_result[i] != dpu_result[i])
       return fprintf(stderr, "Row %u: Host=%d, DPU=%d\n", i, host_result[i],
                     dpu_result[i]);
-    }
-  }
   // Cleanup
   free(host_result); free(dpu_result);
   DPU_ASSERT(dpu_free(set));

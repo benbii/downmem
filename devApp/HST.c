@@ -19,12 +19,7 @@ __host uint32_t global_bins[NUM_BINS];
 // MRAM input data (dynamic allocation)
 __mram_ptr uint32_t *input_buffer = (__mram_ptr uint32_t *)&__sys_used_mram_end;
 
-mtx_t bin_mutexes[NUM_MUTEXES] = {
-    DPU_SPINMUTEX_INITIALIZER(1),
-    DPU_SPINMUTEX_INITIALIZER(2),
-    DPU_SPINMUTEX_INITIALIZER(3),
-    DPU_SPINMUTEX_INITIALIZER(4),
-};
+MUTEX_INIT(m0); MUTEX_INIT(m1); MUTEX_INIT(m2); MUTEX_INIT(m3);
 
 int main() {
   uint32_t tasklet_id = me();
@@ -73,14 +68,21 @@ int main() {
 
   // Aggregate local histograms to global histogram
   // Use mutexes to protect groups of 4 bins each
-  for (int mutex_idx = 0; mutex_idx < NUM_MUTEXES; mutex_idx++) {
-    mutex_lock(bin_mutexes[mutex_idx]);
-    // Update bins protected by this mutex
-    int start_bin = mutex_idx * BINS_PER_MUTEX;
-    int end_bin = start_bin + BINS_PER_MUTEX;
-    for (int bin = start_bin; bin < end_bin && bin < NUM_BINS; bin++)
-      global_bins[bin] += local_bins[bin];
-    mutex_unlock(bin_mutexes[mutex_idx]);
-  }
+  mutex_lock(m0);
+  global_bins[0] += local_bins[0]; global_bins[1] += local_bins[1];
+  global_bins[2] += local_bins[2]; global_bins[3] += local_bins[3];
+  mutex_unlock(m0);
+  mutex_lock(m1);
+  global_bins[4] += local_bins[4]; global_bins[5] += local_bins[5];
+  global_bins[6] += local_bins[6]; global_bins[7] += local_bins[7];
+  mutex_unlock(m1);
+  mutex_lock(m2);
+  global_bins[8] += local_bins[8]; global_bins[9] += local_bins[9];
+  global_bins[10] += local_bins[10]; global_bins[11] += local_bins[11];
+  mutex_unlock(m2);
+  mutex_lock(m3);
+  global_bins[12] += local_bins[12]; global_bins[13] += local_bins[13];
+  global_bins[14] += local_bins[14]; global_bins[15] += local_bins[15];
+  mutex_unlock(m3);
   return 0;
 }

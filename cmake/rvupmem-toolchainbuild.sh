@@ -8,8 +8,8 @@ git checkout llvmorg-20.1.8
 git am "$FUCK/rvupmem-llvm.patch"
 # Need clang to compile clang's various components :)
 C=$3
+rm -r build || true
 if ! which "$3"; then
-  rm -r build || true
   cmake -GNinja -S llvm -B build "-DCMAKE_INSTALL_PREFIX=$1/scratch" \
     -DLLVM_BUILD_LLVM_DYLIB=ON -DLLVM_LINK_LLVM_DYLIB=ON \
     -DLLVM_PARALLEL_LINK_JOBS=20 -DLLVM_RAM_PER_LINK_JOB=5500 \
