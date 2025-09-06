@@ -93,8 +93,7 @@ int main(int argc, char **argv) {
   free(matrix);
   DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
 
-  // Collect results using simplified bulk transfer (TODO: use bulk xfer)
-  printf("TODO: use bulk xfer...\n");
+  // Collect results using simplified bulk transfer
   int32_t *dpu_result = calloc(matrix_rows, sizeof(int32_t));
   uint32_t first_row[num_dpus];
   int32_t *result_sums = calloc(num_dpus, 64 * sizeof(int32_t));
