@@ -1,11 +1,11 @@
 #!/bin/bash
-set -xe
-# Cooked by bash's asshole directory management and quoting syntax
-FUCK="$(dirname "$(realpath "$0")")"
+set -e
+echo Usage: "$0" installPath llvmSrcPath optionalClangPath
+MYDIR="$(dirname "$(realpath "$0")")"
 
 cd "$2"
 git checkout llvmorg-20.1.8
-git am "$FUCK/rvupmem-llvm.patch"
+git am "$MYDIR/rvupmem-llvm.patch"
 # Need clang to compile clang's various components :)
 C=$3
 rm -r build || true
@@ -18,7 +18,7 @@ if ! which "$3"; then
     -DLLVM_TARGETS_TO_BUILD='X86;RISCV' \
     -DLLVM_ENABLE_PROJECTS='clang;lld' \
     -DLLVM_HOST_TRIPLE=x86_64-pc-linux-gnu -DCMAKE_BUILD_TYPE=Release
-  ninja -C build -j$(nproc) install
+  ninja -C build "-j$(nproc)" install
   rm -r build
   C="$1/scratch/bin/clang"
 fi
@@ -38,7 +38,7 @@ cmake -GNinja -S llvm -B build "-DCMAKE_INSTALL_PREFIX=$1" \
   -DLLVM_ENABLE_EH=ON -DLLVM_ENABLE_RTTI=ON -DLLVM_INSTALL_UTILS=ON \
   -DLLVM_ENABLE_ZLIB=ON -DLLVM_ENABLE_ZSTD=ON \
   -DLLVM_HOST_TRIPLE=x86_64-pc-linux-gnu -DCMAKE_BUILD_TYPE=Release
-ninja -C build -j$(nproc) install
+ninja -C build "-j$(nproc)" install
 rm -r "$1/scratch" || true
 
 mkdir -p build/crtrv32 && cd build/crtrv32
@@ -67,10 +67,10 @@ mkdir -p "$1/lib/clang/20/lib/risc32--"
 cp "$1/lib/clang/20/lib/baremetal/libclang_rt.builtins-riscv32.a" \
   "$1/lib/clang/20/lib/risc32--/libclang_rt.builtins-riscv32.a"
 
-cd "$FUCK/.."
+cd "$MYDIR/.."
 rm -r build || true
 cmake -GNinja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release \
   -S. -Bbuild -DDMM_ISA=riscv \
   "-DCMAKE_C_COMPILER=$1/bin/clang" "-DCMAKE_INSTALL_PREFIX=$1" 
 ninja -C build -j16 install
-bash rvRunTests.sh $1
+bash rvRunTests.sh "$1"
