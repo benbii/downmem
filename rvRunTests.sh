@@ -18,6 +18,8 @@ if test -n "$1"; then
     "$1/bin/clang" --target=riscv32 -DNR_TASKLETS=16 -mcpu=umm -O3 -flto \
       devApp/$S.c -o devApp/rvbins/$S -fno-builtin &
   done
+  # use libomp from this llvm installation
+  export LD_LIBRARY_PATH="$1/lib/x86_64-pc-linux-gnu:${LD_LIBRARY_PATH}"
 fi
 
 if ! [ -f hostApp/BFS/csr.txt ]; then

@@ -2,10 +2,11 @@
 set -e
 echo Usage: "$0" installPath llvmSrcPath optionalClang
 MYDIR="$(dirname "$(realpath "$0")")"
-
 mkdir -p "$1"
 cd "$2"
+
 git reset --hard HEAD
+git clean -fd
 git checkout llvmorg-15.0.7
 zstd -d "$MYDIR/upmem-llvm.patch.zst"
 git apply "$MYDIR/upmem-llvm.patch"
@@ -15,12 +16,13 @@ rm "$MYDIR/upmem-llvm.patch"
 C=$3
 rm -r build || true
 if ! which "$3"; then
+  # Our patch should make llvm15 compile under most compilers
   cmake -GNinja -S llvm -B build "-DCMAKE_INSTALL_PREFIX=$1/scratch" \
     -DLLVM_BUILD_LLVM_DYLIB=ON -DLLVM_LINK_LLVM_DYLIB=ON \
     -DLLVM_PARALLEL_LINK_JOBS=5 \
     -DCMAKE_C_FLAGS='-march=native -pipe' \
     -DCMAKE_CXX_FLAGS='-march=native -pipe' \
-    -DLLVM_TARGETS_TO_BUILD='X86;RISCV' \
+    -DLLVM_TARGETS_TO_BUILD='X86' \
     -DLLVM_ENABLE_PROJECTS='clang;lld' \
     -DLLVM_HOST_TRIPLE=x86_64-pc-linux-gnu -DCMAKE_BUILD_TYPE=Release
   ninja -C build "-j$(nproc)" install
@@ -35,7 +37,7 @@ cmake -GNinja -S llvm -B build "-DCMAKE_INSTALL_PREFIX=$1" \
   -DLLVM_PARALLEL_LINK_JOBS=5 \
   -DCMAKE_C_FLAGS='-march=native -pipe' \
   -DCMAKE_CXX_FLAGS='-march=native -pipe' \
-  -DLLVM_TARGETS_TO_BUILD='X86;DPU;ARM;RISCV' \
+  -DLLVM_TARGETS_TO_BUILD='X86;DPU' \
   -DLLVM_ENABLE_PROJECTS='clang;lld;mlir;clang-tools-extra;openmp;compiler-rt' \
   -DCOMPILER_RT_SUPPORTED_ARCH="x86_64" \
   -DLLVM_ENABLE_PLUGINS=ON -DLLVM_ENABLE_FFI=yes \
@@ -43,7 +45,6 @@ cmake -GNinja -S llvm -B build "-DCMAKE_INSTALL_PREFIX=$1" \
   -DLLVM_ENABLE_EH=ON -DLLVM_ENABLE_RTTI=ON \
   -DLLVM_ENABLE_ZLIB=ON -DLLVM_ENABLE_ZSTD=ON \
   -DLLVM_HOST_TRIPLE=x86_64-pc-linux-gnu -DLLVM_INSTALL_UTILS=ON \
-  -DCMAKE_{SHARED,EXE}_LINKER_FLAGS='-Wl,--undefined-version' \
   -DCMAKE_BUILD_TYPE=Release
 ninja -C build "-j$(nproc)" install
 rm -r "$1/scratch" || true

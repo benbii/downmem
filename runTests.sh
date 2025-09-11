@@ -16,6 +16,8 @@ if test -n "$1"; then
     "$1/bin/llvm-objdump" -s -j .atomic -j .data -j .data.__sys_host -j .data.stacks \
       -j .mram devApp/bins/$S.ummbin >>devApp/objdumps/$S.objdump
   done
+  # use libomp from this llvm installation
+  export LD_LIBRARY_PATH="$1/lib/x86_64-pc-linux-gnu:${LD_LIBRARY_PATH}"
 fi
 
 # time build/dmmVaSimple 131072 256 devApp/objdumps/VA-SIMPLE.objdump

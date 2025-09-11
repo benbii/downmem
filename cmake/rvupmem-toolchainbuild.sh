@@ -2,17 +2,23 @@
 set -e
 echo Usage: "$0" installPath llvmSrcPath optionalClangPath
 MYDIR="$(dirname "$(realpath "$0")")"
-
+mkdir -p "$1"
 cd "$2"
-git checkout llvmorg-20.1.8
-git am "$MYDIR/rvupmem-llvm.patch"
+
 # Need clang to compile clang's various components :)
 C=$3
 rm -r build || true
 if ! which "$3"; then
+  # Bootstrap with patched llvm15
+  git reset --hard HEAD
+  git clean -fd
+  git checkout llvmorg-15.0.7
+  zstd -d "$MYDIR/upmem-llvm.patch.zst"
+  git apply "$MYDIR/upmem-llvm.patch"
+  rm "$MYDIR/upmem-llvm.patch"
   cmake -GNinja -S llvm -B build "-DCMAKE_INSTALL_PREFIX=$1/scratch" \
     -DLLVM_BUILD_LLVM_DYLIB=ON -DLLVM_LINK_LLVM_DYLIB=ON \
-    -DLLVM_PARALLEL_LINK_JOBS=20 -DLLVM_RAM_PER_LINK_JOB=5500 \
+    -DLLVM_PARALLEL_LINK_JOBS=5 \
     -DCMAKE_C_FLAGS='-march=native -pipe' \
     -DCMAKE_CXX_FLAGS='-march=native -pipe' \
     -DLLVM_TARGETS_TO_BUILD='X86;RISCV' \
@@ -23,6 +29,10 @@ if ! which "$3"; then
   C="$1/scratch/bin/clang"
 fi
 
+git reset --hard HEAD
+git clean -fd
+git checkout llvmorg-20.1.8
+git apply "$MYDIR/rvupmem-llvm.patch"
 cmake -GNinja -S llvm -B build "-DCMAKE_INSTALL_PREFIX=$1" \
   -DCMAKE_C_COMPILER="$C" -DCMAKE_CXX_COMPILER="$C++" \
   -DLLVM_ENABLE_LLD=ON -DLLVM_ENABLE_LTO=Thin \
