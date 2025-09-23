@@ -2,12 +2,13 @@
 set -xe
 cd "$(dirname "$0")"
 
-mkdir -p build
-cmake -GNinja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release \
-  -S. -Bbuild -DCMAKE_C_COMPILER=clang -DDMM_ISA=upmem
-cmake --build build
 if test -n "$1"; then
-  mkdir -p devApp/{bins,objdumps}
+  rm -r build || true
+  mkdir -p build devApp/{bins,objdumps}
+  cmake -GNinja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release \
+    -S. -Bbuild -DCMAKE_C_COMPILER=clang -DDMM_ISA=upmem
+  cmake --build build
+
   for S in BS COMPACT GEMV HST MLP OPDEMO OPDEMOF SPMV \
       NW RED SCAN TRNS TS UNI VA VA-SIMPLE; do
     "$1/bin/clang" -O3 --target=dpu-upmem-dpurte -mcpu=v1A -g \
@@ -38,7 +39,8 @@ time build/dmmUni 100000 256 devApp/objdumps/UNI.objdump
 time build/dmmVa 5242880 2560 devApp/objdumps/VA.objdump
 
 if ! [ -f hostApp/BFS/csr.txt ]; then
-  wget "https://drive.usercontent.google.com/download?id=1bXYWq_4dXrJcst5jsLL3CJTeZTQCrBlr&export=download&authuser=0"
+  wget -O hostApp/BFS/csr.txt.zst \
+    "https://drive.usercontent.google.com/download?id=1bXYWq_4dXrJcst5jsLL3CJTeZTQCrBlr&export=download"
   zstd -d hostApp/BFS/csr.txt.zst
 fi
 time build/dmmBfs simpleBFSDpu 0 hostApp/BFS/csr.txt /tmp/dmmBfsDOut devApp/objdumps/BFS.objdump 192 

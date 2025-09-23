@@ -66,8 +66,7 @@ int main(int argc, char **argv) {
   // Verify results
   for (int i = 0; i < NUM_BINS; i++)
     if (host_bins[i] != dpu_bins[i])
-      return fprintf(stderr, "%2d\t%u\t%u\t%s\n", i, host_bins[i], dpu_bins[i],
-                     "✗");
+      return fprintf(stderr, "%2d\t%u\t%u ✗\n", i, host_bins[i], dpu_bins[i]);
   dpu_free(set);
   return 0;
 }

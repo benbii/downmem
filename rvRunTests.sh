@@ -3,6 +3,7 @@ set -xe
 cd "$(dirname "$0")"
 
 if test -n "$1"; then
+  rm -r build || true
   mkdir -p build devApp/rvbins
   cmake -GNinja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release \
     -S. -Bbuild "-DCMAKE_C_COMPILER=$1/bin/clang" -DDMM_ISA=riscv
@@ -22,18 +23,6 @@ if test -n "$1"; then
   export LD_LIBRARY_PATH="$1/lib/x86_64-pc-linux-gnu:${LD_LIBRARY_PATH}"
 fi
 
-if ! [ -f hostApp/BFS/csr.txt ]; then
-  wget "https://drive.usercontent.google.com/download?id=1bXYWq_4dXrJcst5jsLL3CJTeZTQCrBlr&export=download&authuser=0"
-  zstd -d hostApp/BFS/csr.txt.zst
-fi
-wait
-time build/dmmBfs simpleBFSDpu 0 hostApp/BFS/csr.txt /tmp/dmmBfsDOut devApp/rvbins/BFS 192
-build/dmmBfs simpleBFSCpu 0 hostApp/BFS/csr.txt /tmp/dmmBfsCOut >/dev/null
-# Check the output is indeed correct here.
-diff /tmp/dmmBfs{C,D}Out
-rm /tmp/dmmBfs{C,D}Out
-
-# time build/dmmVaSimple 131072 256 devApp/rvbins/VA-SIMPLE
 time build/dmmBs 5242880 640 devApp/rvbins/BS
 time build/dmmCompact 5242880 2560 devApp/rvbins/COMPACT
 time build/dmmHst 2621440 1280 devApp/rvbins/HST
@@ -49,3 +38,15 @@ time build/dmmTrns 2000 200 devApp/rvbins/TRNS
 time build/dmmTs 327680 320 devApp/rvbins/TS
 time build/dmmUni 100000 256 devApp/rvbins/UNI
 time build/dmmVa 5242880 2560 devApp/rvbins/VA
+
+if ! [ -f hostApp/BFS/csr.txt ]; then
+  wget -O hostApp/BFS/csr.txt.zst \
+    "https://drive.usercontent.google.com/download?id=1bXYWq_4dXrJcst5jsLL3CJTeZTQCrBlr&export=download"
+  zstd -d hostApp/BFS/csr.txt.zst
+fi
+wait
+time build/dmmBfs simpleBFSDpu 0 hostApp/BFS/csr.txt /tmp/dmmBfsDOut devApp/rvbins/BFS 192
+build/dmmBfs simpleBFSCpu 0 hostApp/BFS/csr.txt /tmp/dmmBfsCOut >/dev/null
+# Check the output is indeed correct here.
+diff /tmp/dmmBfs{C,D}Out
+rm /tmp/dmmBfs{C,D}Out

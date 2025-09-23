@@ -1,4 +1,5 @@
-#pragma once
+#ifndef __RV_DMM_H
+#define __RV_DMM_H
 #include "../dmm_common.h"
 
 // --- RISC-V ISA Specific Constants ---
@@ -151,4 +152,4 @@ static inline void DmmDpuFini(DmmDpu* d) {
 // --- Lookup Tables ---
 extern const char* DmmOpStr[NrOpcode];
 extern const uint8_t DmmRvNeedRw[NrOpcode];
-
+#endif

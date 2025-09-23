@@ -6,34 +6,39 @@
 #include <defs.h>
 #include <mram.h>
 #include <mutex.h>
-typedef uint32_t upmsz_t;
 
 // Needles and Haystack
-__host uint32_t ndl[1024], hst[8192];
-__host size_t nrHst, hstIdOff, resAt, nrFinish;
+__host uint32_t nth_kernel, nrHst, hstkOff, nrNdl;
+__host uint32_t hst[8192];
+__mram_noinit uint32_t ndl[1 << 20];
+uint32_t resAt, nrFinish;
 MUTEX_INIT(resAtMut);
 MUTEX_INIT(nrFinishMut);
+
+// matches CPU behavior
+size_t bs_run(uint32_t *haystack, size_t nrHstk, uint32_t needle) {
+  size_t left = 0, right = nrHstk;
+  while (left < right) {
+    size_t mid = (left + right) >> 1;
+    if (haystack[mid] < needle)
+      left = mid + 1;
+    else
+      right = mid;
+  }
+  return left;
+}
 
 int main() {
   resAt = 0, nrFinish = 0;
   const uint32_t min = hst[0], max = hst[nrHst - 1];
   __mram_ptr uint32_t *const reses = DPU_MRAM_HEAP_POINTER;
 
-  for (size_t i = me(); i < 1024; i += NR_TASKLETS) {
+  for (size_t i = me(); i < nrNdl; i += NR_TASKLETS) {
     uint32_t curNdl = ndl[i];
     if (curNdl < min || curNdl > max)
       continue;
 
-    size_t left = 0, right = nrHst;
-    while (left < right) {
-      size_t mid = (left + right) >> 1;
-      if (hst[mid] < curNdl)
-        left = mid + 1;
-      else
-        right = mid;
-    }
-
-    uint32_t bruh[2] = {curNdl, right + hstIdOff};
+    uint32_t bruh[2] = {i, bs_run(hst, nrHst, curNdl) + hstkOff};
     mutex_lock(resAtMut);
     uint32_t myResAt = resAt;
     resAt += 2;

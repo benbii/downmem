@@ -1,4 +1,5 @@
-#pragma once
+#ifndef __DMM_H
+#define __DMM_H
 #include "../dmm_common.h"
 
 // --- UPMEM ISA Specific Constants ---
@@ -188,3 +189,4 @@ ObjdLnToDatRet ObjdLnToDat(const char* objdumpLine, size_t sz);
 // outBuf. If the line does not match, it sets *outBufSz to 0.
 DmmSymAddr ObjdLnToSym(const char *objdumpLine, size_t linesz, char *outBuf,
                        size_t* outBufSz);
+#endif
