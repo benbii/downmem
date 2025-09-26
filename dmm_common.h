@@ -21,6 +21,7 @@ DmmMap DmmMapInit(size_t initCap);
 void DmmMapAssign(DmmMap map, const void *str, size_t sz, uint_fast32_t val);
 uint_fast32_t DmmMapFetch(DmmMap map, const void* str, size_t sz);
 void DmmMapFini(DmmMap map);
+void DmmMapClear(DmmMap map);
 enum { MapNoInt = 0x44f8a1ef, noAddr = 0x44f8a1ef };
 typedef size_t DmmSymAddr;
 

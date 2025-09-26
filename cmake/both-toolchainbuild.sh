@@ -11,6 +11,7 @@ git checkout llvmorg-15.0.7
 zstd -d "$MYDIR/upmem-llvm.patch.zst"
 git apply "$MYDIR/upmem-llvm.patch"
 rm "$MYDIR/upmem-llvm.patch"
+git apply "$MYDIR/rvupmem-llvm15.patch"
 
 # Need clang to compile clang's various components :)
 C=$3
@@ -37,7 +38,7 @@ cmake -GNinja -S llvm -B build "-DCMAKE_INSTALL_PREFIX=$1" \
   -DLLVM_PARALLEL_LINK_JOBS=5 \
   -DCMAKE_C_FLAGS='-march=native -pipe' \
   -DCMAKE_CXX_FLAGS='-march=native -pipe' \
-  -DLLVM_TARGETS_TO_BUILD='X86;DPU' \
+  -DLLVM_TARGETS_TO_BUILD='X86;DPU;RISCV' \
   -DLLVM_ENABLE_PROJECTS='clang;lld;mlir;clang-tools-extra;openmp;compiler-rt' \
   -DCOMPILER_RT_SUPPORTED_ARCH="x86_64" \
   -DLLVM_ENABLE_PLUGINS=ON -DLLVM_ENABLE_FFI=yes \
@@ -49,6 +50,32 @@ cmake -GNinja -S llvm -B build "-DCMAKE_INSTALL_PREFIX=$1" \
 ninja -C build "-j$(nproc)" install
 rm -r "$1/scratch" || true
 
+# compiler-rt
+mkdir -p build/crtrv32 && cd build/crtrv32
+cmake -S ../../compiler-rt -B. -GNinja \
+  -DCMAKE_BUILD_TYPE=Release \
+  "-DLLVM_CONFIG_PATH=$1/bin/llvm-config" \
+  "-DCMAKE_C_COMPILER=$1/bin/clang" \
+  "-DCMAKE_CXX_COMPILER=$1/bin/clang++" \
+  -DCMAKE_C_COMPILER_TARGET=riscv32-unknown-elf \
+  -DCMAKE_CXX_COMPILER_TARGET=riscv32-unknown-elf \
+  -DCMAKE_ASM_COMPILER_TARGET=riscv32-unknown-elf \
+  -DCMAKE_C_FLAGS="-march=rv32im_zbb -nostdlib" \
+  -DCMAKE_CXX_FLAGS="-march=rv32im_zbb -nostdlib" \
+  -DCMAKE_ASM_FLAGS="-march=rv32im_zbb -nostdlib" \
+  -DCOMPILER_RT_BUILD_BUILTINS=ON \
+  -DCOMPILER_RT_BUILD_SANITIZERS=OFF \
+  -DCOMPILER_RT_BUILD_XRAY=OFF \
+  -DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
+  -DCOMPILER_RT_BUILD_PROFILE=OFF \
+  -DCOMPILER_RT_BAREMETAL_BUILD=ON \
+  -DCOMPILER_RT_OS_DIR="baremetal" \
+  -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON \
+  -DCMAKE_INSTALL_PREFIX="$1" \
+  "-DCOMPILER_RT_INSTALL_PATH=$1/lib/clang/15.0.7"
+ninja -j16 install
+
+# dpu-rt
 cd "$MYDIR/.."
 if ! tar xf cmake/dpu-rt.tar.zst; then
   zstd -d cmake/dpu-rt.tar.zst
@@ -59,8 +86,13 @@ cmake -GNinja -DCMAKE_BUILD_TYPE=Release -Sdpu-rt -Bdpu-rt/build \
   "-DCMAKE_C_COMPILER=$1/bin/clang" "-DCMAKE_INSTALL_PREFIX=$1"
 ninja -C dpu-rt/build "-j$(nproc)" install
 rm -r dpu-rt build || true
+
+# downmem and rvupmem-rt
 cmake -GNinja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release \
-  -S. -Bbuild -DDMM_ISA=upmem \
-  "-DCMAKE_C_COMPILER=$1/bin/clang" "-DCMAKE_INSTALL_PREFIX=$1" 
+  -S. -Bbuild "-DCMAKE_C_COMPILER=$1/bin/clang" "-DCMAKE_INSTALL_PREFIX=$1" 
+ninja -C build -j16 install
+ninja -C build -j16 dpuExamples
+
 bash runTests.sh "$1"
+bash rvRunTests.sh "$1"
 

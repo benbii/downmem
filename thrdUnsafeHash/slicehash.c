@@ -38,4 +38,5 @@ uint_fast32_t DmmMapFetch(DmmMap map, const void* str, size_t sz) {
   return a != NULL ? a->value : 0x44f8a1ef;
 }
 void DmmMapFini(DmmMap map) { hashmap_free(map); }
+void DmmMapClear(DmmMap map) { hashmap_clear(map, true); }
 

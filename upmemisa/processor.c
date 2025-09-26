@@ -1,4 +1,4 @@
-#include "downmem.h"
+#include "dmminternal.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,7 +17,7 @@ static uint32_t rotr32c (uint32_t x, uint32_t n) {
 }
 #endif
 
-void DmmTletInit(DmmTlet* thread, uint8_t i) {
+void UmmTletInit(UmmTlet* thread, uint8_t i) {
   thread->Pc = 0;
   thread->State = SLEEP;
   thread->Id = i;
@@ -31,12 +31,12 @@ void DmmTletInit(DmmTlet* thread, uint8_t i) {
   thread->Regs[NumGpRegisters + 7] = (uint32_t)i << 3;
 }
 
-void DmmDpuInit(DmmDpu* d, size_t memFreq, size_t logicFreq) {
-  DmmPrgInit(&d->Program);
-  DmmTimingInit(&d->Timing, d->Program.Iram, memFreq, logicFreq);
+void UmmDpuInit(UmmDpu* d, size_t memFreq, size_t logicFreq) {
+  UmmPrgInit(&d->Program);
+  UmmTimingInit(&d->Timing, d->Program.Iram, memFreq, logicFreq);
 }
 
-void DmmDpuRun(DmmDpu* d, size_t nrTasklets) {
+void UmmDpuRun(UmmDpu* d, size_t nrTasklets) {
   for (size_t i = 0; i < nrTasklets; ++i)
     d->Timing.Threads[i].Pc = 0;
   d->Timing.Threads[0].State = RUNNABLE;
@@ -48,13 +48,13 @@ void DmmDpuRun(DmmDpu* d, size_t nrTasklets) {
       if (d->Timing.Threads[i].State != RUNNABLE)
         continue;
       running = true;
-      DmmDpuExecuteInstr(d, &d->Timing.Threads[i]);
+      UmmDpuExecuteInstr(d, &d->Timing.Threads[i]);
       ++d->Timing.StatNrInstrExec;
     }
 #else
-    DmmTlet *thrd = DmmTimingCycle(&d->Timing, nrTasklets);
+    UmmTlet *thrd = UmmTimingCycle(&d->Timing, nrTasklets);
     if (thrd != NULL)
-      DmmDpuExecuteInstr(d, thrd);
+      UmmDpuExecuteInstr(d, thrd);
     running = false;
     for (size_t i = 0; i < nrTasklets; ++i) {
       if (d->Timing.Threads[i].State == SLEEP)
@@ -66,10 +66,10 @@ void DmmDpuRun(DmmDpu* d, size_t nrTasklets) {
   }
 }
 
-void DmmDpuExecuteInstr(DmmDpu* d, DmmTlet* thread) {
+void UmmDpuExecuteInstr(UmmDpu* d, UmmTlet* thread) {
   assert(thread->Regs[ZeroReg] == 0);
-  DmmInstr *instr = &d->Program.Iram[thread->Pc / IramDataByte];
-  thread->Pc += IramDataByte;
+  UmmInstr *instr = &d->Program.Iram[thread->Pc / IramNrByte];
+  thread->Pc += IramNrByte;
   size_t rc = instr->RegC;
   uint8_t *wma = d->Program.WMAram;
   uint64_t va = thread->Regs[instr->RegA], vb = thread->Regs[instr->RegB],
@@ -199,8 +199,8 @@ void DmmDpuExecuteInstr(DmmDpu* d, DmmTlet* thread) {
 
   case JMP: vb += immA; break;
   case CALL:
-    thread->Regs[rc] = thread->Pc / IramDataByte;
-    thread->Pc = (va * IramDataByte + immA) & IramMask; return;
+    thread->Regs[rc] = thread->Pc / IramNrByte;
+    thread->Pc = (va * IramNrByte + immA) & IramMask; return;
 
   case ACQUIRE: case RELEASE:
     va = va + immA;
@@ -282,12 +282,12 @@ void DmmDpuExecuteInstr(DmmDpu* d, DmmTlet* thread) {
   // case SATS: case SATS_S: case SATS_U:
   // case CMPB4: case CMPB4_S: case CMPB4_U:
   default:
-    assert(fprintf(stderr, "%s not suported\n", DmmOpStr[instr->Opcode]) && 0);
+    assert(fprintf(stderr, "%s not suported\n", UmmOpStr[instr->Opcode]) && 0);
     __builtin_unreachable();
   }
 
   // Write back
-  switch (DmmOpWbMode[instr->Opcode]) {
+  switch (UmmOpWbMode[instr->Opcode]) {
     case noWb: break;
     case wbZf:
     case wbNoZf: thread->Regs[rc] = (uint32_t)result; break;

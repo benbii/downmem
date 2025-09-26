@@ -1,5 +1,5 @@
 #define PCRE2_CODE_UNIT_WIDTH 8
-#include "downmem.h"
+#include "dmminternal.h"
 #include <assert.h>
 #include <byteswap.h>
 #include <pcre2.h>
@@ -32,7 +32,7 @@ static void __attribute__((constructor)) regex_init() {
   dataMat = pcre2_match_data_create_from_pattern(dataRe, NULL);
 }
 
-void DmmPrgInit(DmmPrg* p) {
+void UmmPrgInit(UmmPrg* p) {
   // coreId = numa_node_of_cpu(coreId);
   p->WMAram = mmap(NULL, WMAINrByte, PROT_READ | PROT_WRITE,
                    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
@@ -42,7 +42,7 @@ void DmmPrgInit(DmmPrg* p) {
   }
   if (madvise(p->WMAram, WMAINrByte, MADV_HUGEPAGE) != 0)
     perror("madvise");
-  p->Iram = (DmmInstr*)(p->WMAram + WramSize + MramSize + AtomicSize);
+  p->Iram = (UmmInstr*)(p->WMAram + WramSize + MramSize + AtomicSize);
   // if (coreId >= 0) {
   //   coreId = 1 << coreId;
   //   if (0 != mbind(p->WMAram, WramSize + MramSize + AtomicSize, MPOL_BIND,
@@ -50,8 +50,9 @@ void DmmPrgInit(DmmPrg* p) {
   //     perror("mbind");
   // }
 }
-void DmmPrgFini(DmmPrg* p) {
-  munmap(p->WMAram, WMAINrByte);
+void UmmPrgFini(UmmPrg* p) {
+  if (p->WMAram != NULL)
+    munmap(p->WMAram, WMAINrByte);
 }
 
 // -- OBJDUMP parsing related functions --
@@ -59,20 +60,20 @@ void DmmPrgFini(DmmPrg* p) {
 static uint32_t parseImmediate(const char *imm, PCRE2_SIZE sz,
                                DmmMap symbols);
 static uint8_t parseRegister(const char* reg, PCRE2_SIZE sz);
-static DmmInstr stores(const char* fields, const PCRE2_SIZE *ovector,
+static UmmInstr stores(const char* fields, const PCRE2_SIZE *ovector,
                        size_t nrFields, DmmMap symbols);
-static DmmInstr subs(const char* fields, const PCRE2_SIZE *ovector,
+static UmmInstr subs(const char* fields, const PCRE2_SIZE *ovector,
                        size_t nrFields, DmmMap symbols);
-static DmmInstr jumps(const char* fields, const PCRE2_SIZE *ovector,
+static UmmInstr jumps(const char* fields, const PCRE2_SIZE *ovector,
                       size_t nrFields, DmmMap symbols);
-static DmmInstr allothers(const char* fields, const PCRE2_SIZE *ovector,
+static UmmInstr allothers(const char* fields, const PCRE2_SIZE *ovector,
                           size_t nrFields, DmmMap symbols);
 
 // ObjdLnToInstr turns an objdump line into an Instr struct.
-DmmInstr ObjdLnToInstr(const char* objdumpLine, size_t sz, DmmMap symbols) {
+UmmInstr ObjdLnToInstr(const char* objdumpLine, size_t sz, DmmMap symbols) {
   int rc = pcre2_match(instrRe, (PCRE2_SPTR)objdumpLine, sz, 0, 0, instrMat, NULL);
   if (rc < 2)
-    return (DmmInstr){.Opcode = MapNoInt};
+    return (UmmInstr){.Opcode = MapNoInt};
   PCRE2_SIZE* ovector = pcre2_get_ovector_pointer(instrMat) + 2, ov0 = ovector[0];
   if (objdumpLine[ov0] == 'j') {
     return jumps(objdumpLine, ovector, rc-1, symbols);
@@ -130,13 +131,13 @@ DmmSymAddr ObjdLnToSym(const char *objdumpLine, size_t linesz, char *outBuf,
 
 // Store instructions. The expected order of fields is:
 //	[regA?] [immA?] [regB?] [immB?]
-static DmmInstr stores(const char* fields, const PCRE2_SIZE *ovector,
+static UmmInstr stores(const char* fields, const PCRE2_SIZE *ovector,
                        size_t nrFields, DmmMap symbols) {
   // Extract opcode
   const char* opcode = fields + ovector[0];
   size_t opcodeLen = ovector[1] - ovector[0];
-  DmmInstr instr = {
-    .Opcode = DmmMapFetch(DmmStrToOpcode, opcode, opcodeLen),
+  UmmInstr instr = {
+    .Opcode = DmmMapFetch(UmmStrToOpcode, opcode, opcodeLen),
     .Cond = NoCond,
     .RegC = NullReg, .RegA = ZeroReg, .RegB = ZeroReg,
     .ImmA = ZeroImm, .ImmB = ZeroImm,
@@ -183,13 +184,13 @@ static DmmInstr stores(const char* fields, const PCRE2_SIZE *ovector,
   return instr;
 }
 
-static DmmInstr subs(const char* fields, const PCRE2_SIZE *ovector,
+static UmmInstr subs(const char* fields, const PCRE2_SIZE *ovector,
                        size_t nrFields, DmmMap symbols) {
   // Extract opcode
   const char* opcode = fields + ovector[0];
   size_t opcodeLen = ovector[1] - ovector[0];
-  DmmInstr instr = {
-    .Opcode = DmmMapFetch(DmmStrToOpcode, opcode, opcodeLen),
+  UmmInstr instr = {
+    .Opcode = DmmMapFetch(UmmStrToOpcode, opcode, opcodeLen),
   // 1. regC is required
     .RegC = parseRegister(FIELD_AT(1)),
     .RegA = ZeroReg, .RegB = ZeroReg,
@@ -215,7 +216,7 @@ static DmmInstr subs(const char* fields, const PCRE2_SIZE *ovector,
   // 4. optional condition and pc
   size_t curAt = 4;
   if (curAt < nrFields) {
-    DmmCc cond = DmmMapFetch(DmmStrToCc, FIELD_AT(curAt));
+    UmmCc cond = DmmMapFetch(UmmStrToCc, FIELD_AT(curAt));
     if (cond != MapNoInt) {
       instr.Cond = cond;
       curAt++;
@@ -229,9 +230,9 @@ static DmmInstr subs(const char* fields, const PCRE2_SIZE *ovector,
   return instr;
 }
 
-static DmmInstr jumps(const char* fields, const PCRE2_SIZE *ovector,
+static UmmInstr jumps(const char* fields, const PCRE2_SIZE *ovector,
                       size_t nrFields, DmmMap symbols) {
-  DmmInstr instr = {
+  UmmInstr instr = {
     .Opcode = JMP, .Cond = NoCond,
     .RegA = ZeroReg, .RegB = ZeroReg, .RegC = NullReg,
     .ImmA = ZeroImm, .ImmB = ZeroImm,
@@ -263,7 +264,7 @@ static DmmInstr jumps(const char* fields, const PCRE2_SIZE *ovector,
   // Handle conditional jumps: First parse condition from jmpcode[1:] (this is
   // the "condition" suffix of the opcode itself).
   // See what the macro expands into [Chuckle]
-  instr.Cond = DmmMapFetch(DmmStrToJcc, 1 + FIELD_AT(0) - 1);
+  instr.Cond = DmmMapFetch(UmmStrToJcc, 1 + FIELD_AT(0) - 1);
   // Last field (fields[l]) is always ImmB
   instr.ImmB = parseImmediate(FIELD_AT(l), symbols);
   assert(instr.ImmB != MapNoInt);
@@ -283,14 +284,14 @@ static DmmInstr jumps(const char* fields, const PCRE2_SIZE *ovector,
   return instr;
 }
 
-static DmmInstr allothers(const char* fields, const PCRE2_SIZE *ovector,
+static UmmInstr allothers(const char* fields, const PCRE2_SIZE *ovector,
                           size_t nrFields, DmmMap symbols) {
   const char* opcode = fields + ovector[0];
   size_t opcodeLen = ovector[1] - ovector[0];
-  DmmInstr instr = {
+  UmmInstr instr = {
     .RegC = NullReg, .RegA = ZeroReg, .RegB = ZeroReg,
     .ImmA = ZeroImm, .ImmB = ZeroImm,
-    .Cond = NoCond, .Opcode = DmmMapFetch(DmmStrToOpcode, opcode, opcodeLen)
+    .Cond = NoCond, .Opcode = DmmMapFetch(UmmStrToOpcode, opcode, opcodeLen)
   };
   if (instr.Opcode == MapNoInt)
     exit(fprintf(stderr, "Unrecognized opcode %.*s\n", (int)opcodeLen, opcode));
@@ -300,7 +301,7 @@ static DmmInstr allothers(const char* fields, const PCRE2_SIZE *ovector,
   if (curAt < nrFields) {
     uint8_t reg = parseRegister(FIELD_AT(curAt));
     if (reg != badReg) {
-      if (reg != ZeroReg || DmmOpWbMode[instr.Opcode] == noWb)
+      if (reg != ZeroReg || UmmOpWbMode[instr.Opcode] == noWb)
         instr.RegC = reg;
       curAt++;
     }
@@ -332,7 +333,7 @@ static DmmInstr allothers(const char* fields, const PCRE2_SIZE *ovector,
   }
   // 4. Parse condition (stringToCondition lookup)
   if (curAt < nrFields) {
-    DmmCc cond = DmmMapFetch(DmmStrToCc, FIELD_AT(curAt));
+    UmmCc cond = DmmMapFetch(UmmStrToCc, FIELD_AT(curAt));
     if (cond != MapNoInt) {
       instr.Cond = cond;
       curAt++;
@@ -387,14 +388,23 @@ static uint8_t parseRegister(const char* reg, PCRE2_SIZE sz) {
   return badReg;  // Default case
 }
 
-size_t DmmPrgLoadBinary(DmmPrg *p, const char *filename, DmmMap symbols,
+size_t UmmPrgLoadBinary(UmmPrg *p, const char *filename, DmmMap symbols,
                          bool paged[WMAINrPage]) {
-  if (paged != NULL)
-    memset(paged, 0, WMAINrPage);
   FILE* scanner = fopen(filename, "rb");
   if (scanner == NULL) return 0;
-  // p->Iram already allocated
+  char first32[32]= {};
+  fread(first32, 32, 1, scanner);
+  for (size_t i = 0; i < 32; ++i)
+    if (first32[i] < '\t' || first32[i] > '~') {
+      fclose(scanner);
+      return 0;
+    }
+  rewind(scanner);
+
+  UmmPrgInit(p);
   size_t iramAt = 0;
+  if (paged != NULL)
+    memset(paged, 0, WMAINrPage);
 
   while (!feof(scanner)) {
     char line[256], outBuf[128];
@@ -411,11 +421,12 @@ size_t DmmPrgLoadBinary(DmmPrg *p, const char *filename, DmmMap symbols,
     }
 
     // Otherwise, try to parse the line as an instruction.
-    DmmInstr instr = ObjdLnToInstr(line, lineSz, symbols);
+    UmmInstr instr = ObjdLnToInstr(line, lineSz, symbols);
     if (instr.Opcode != MapNoInt) {
       p->Iram[iramAt++] = instr;
       if (iramAt >= IramNrInstr) {
         fputs("UPMEM program can only hold 4096 instructions\n", stderr);
+        fclose(scanner);
         return 0;
       }
       continue;
@@ -443,5 +454,6 @@ size_t DmmPrgLoadBinary(DmmPrg *p, const char *filename, DmmMap symbols,
     case 1: dest[0] = dat.Dat[0];
     }
   }
+  fclose(scanner);
   return iramAt;
 }

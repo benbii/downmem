@@ -1,4 +1,4 @@
-#include "downmem.h"
+#include "dmminternal.h"
 #include <assert.h>
 #include <byteswap.h>
 #include <stdbool.h>
@@ -75,8 +75,8 @@ static int32_t __immj(uint32_t instr) {
   return (imm << 11) >> 11;  // Sign extend 21 bits
 }
 
-static DmmInstr rvdecode(uint32_t encoded) {
-  DmmInstr instr = {0};
+static RvInstr rvdecode(uint32_t encoded) {
+  RvInstr instr = {0};
   uint32_t opcode = OPCODE(encoded);
   uint32_t funct3 = FUNCT3(encoded);
   uint32_t funct7 = FUNCT7(encoded);
@@ -105,11 +105,11 @@ static DmmInstr rvdecode(uint32_t encoded) {
     case RV_LOAD:
       instr.imm = __immi(encoded);
       switch (funct3) {
-        case 0x0: instr.Opcode = LB; break;
-        case 0x1: instr.Opcode = LH; break;
-        case 0x2: instr.Opcode = LW; break;
-        case 0x4: instr.Opcode = LBU; break;
-        case 0x5: instr.Opcode = LHU; break;
+        case 0x0: instr.Opcode = LBr; break;
+        case 0x1: instr.Opcode = LHr; break;
+        case 0x2: instr.Opcode = LWr; break;
+        case 0x4: instr.Opcode = LBUr; break;
+        case 0x5: instr.Opcode = LHUr; break;
         default: goto die;
       }
       break;
@@ -117,9 +117,9 @@ static DmmInstr rvdecode(uint32_t encoded) {
     case RV_STORE:
       instr.imm = __imms(encoded);
       switch (funct3) {
-        case 0x0: instr.Opcode = SB; break;
-        case 0x1: instr.Opcode = SH; break;
-        case 0x2: instr.Opcode = SW; break;
+        case 0x0: instr.Opcode = SBr; break;
+        case 0x1: instr.Opcode = SHr; break;
+        case 0x2: instr.Opcode = SWr; break;
         default: goto die;
       }
       break;
@@ -138,7 +138,7 @@ static DmmInstr rvdecode(uint32_t encoded) {
           if (funct7 == 0x00) instr.Opcode = SLLI;
           else if (funct7 == 0x30) {
             // Zbb unary instructions using OP_IMM encoding
-            if (instr.rs2 == 0) instr.Opcode = CLZ;       // clz
+            if (instr.rs2 == 0) instr.Opcode = CLZr;       // clz
             else if (instr.rs2 == 1) instr.Opcode = CTZ;  // ctz  
             else if (instr.rs2 == 2) instr.Opcode = CPOP; // cpop
             else goto die;
@@ -160,23 +160,23 @@ static DmmInstr rvdecode(uint32_t encoded) {
         case 0x00:
           // Standard RV32I arithmetic
           switch (funct3) {
-            case 0x0: instr.Opcode = ADD; break;
+            case 0x0: instr.Opcode = ADDr; break;
             case 0x1: instr.Opcode = SLL; break;
             case 0x2: instr.Opcode = SLT; break;
             case 0x3: instr.Opcode = SLTU; break;
-            case 0x4: instr.Opcode = XOR; break;
+            case 0x4: instr.Opcode = XORr; break;
             case 0x5: instr.Opcode = SRL; break;
-            case 0x6: instr.Opcode = OR; break;
-            case 0x7: instr.Opcode = AND; break;
+            case 0x6: instr.Opcode = ORr; break;
+            case 0x7: instr.Opcode = ANDr; break;
             default: goto die;
           }
           break;
         case 0x20:
           // SUB, SRA, and Zbb ANDN instruction
           switch (funct3) {
-            case 0x0: instr.Opcode = SUB; break;
+            case 0x0: instr.Opcode = SUBr; break;
             case 0x5: instr.Opcode = SRA; break;
-            case 0x7: instr.Opcode = ANDN; break;     // andn
+            case 0x7: instr.Opcode = ANDNr; break;     // andn
             default: goto die;
           }
           break;
@@ -199,7 +199,7 @@ static DmmInstr rvdecode(uint32_t encoded) {
           switch (funct3) {
             case 0x4: instr.Opcode = MIN; break;     // MIN
             case 0x5: instr.Opcode = MINU; break;    // MINU
-            case 0x6: instr.Opcode = MAX; break;     // MAX
+            case 0x6: instr.Opcode = MAXr; break;     // MAX
             case 0x7: instr.Opcode = MAXU; break;    // MAXU
             default: goto die;
           }
@@ -209,16 +209,16 @@ static DmmInstr rvdecode(uint32_t encoded) {
           switch (funct3) {
             case 0x1: 
               // CLZ, CTZ, CPOP (unary operations using rs2 to distinguish)
-              if (instr.rs2 == 0) instr.Opcode = CLZ;       // clz
+              if (instr.rs2 == 0) instr.Opcode = CLZr;       // clz
               else if (instr.rs2 == 1) instr.Opcode = CTZ;  // ctz
               else if (instr.rs2 == 2) instr.Opcode = CPOP; // cpop
-              else instr.Opcode = ROL;                      // rol (binary operation, default)
+              else instr.Opcode = ROLr;                      // rol (binary operation, default)
               break;
             case 0x4: instr.Opcode = SEXT_B; break;       // sext.b
             case 0x5: 
               if (instr.rs2 == 5) instr.Opcode = SEXT_H;    // sext.h (unary)
               else if (instr.rs2 == 4) instr.Opcode = ZEXT_H; // zext.h (unary)
-              else instr.Opcode = ROR;                      // ror (binary operation)
+              else instr.Opcode = RORr;                      // ror (binary operation)
               break;
             default: goto die;
           }
@@ -226,7 +226,7 @@ static DmmInstr rvdecode(uint32_t encoded) {
         case 0x40:
           // RV32B Zbb: More bitwise operations
           switch (funct3) {
-            case 0x6: instr.Opcode = ORN; break;      // orn
+            case 0x6: instr.Opcode = ORNr; break;      // orn
             case 0x4: instr.Opcode = XNOR; break;     // xnor
             default: goto die;
           }
@@ -273,7 +273,7 @@ static DmmInstr rvdecode(uint32_t encoded) {
     default: goto die;
   }
 
-  uint8_t needRw = DmmRvNeedRw[instr.Opcode];
+  uint8_t needRw = RvNeedRw[instr.Opcode];
   if (!(needRw & 4)) instr.rd = 0; // excluded from timing calculation
   if ((needRw & 3) < 2) instr.rs2 = 0;
   if ((needRw & 3) < 1) instr.rs1 = 0;
@@ -282,25 +282,25 @@ die:
   exit(fprintf(stderr, "Unknown instr %x\n", encoded));
 }
 
-void DmmPrgInit(DmmPrg* p) {
-  p->WMAram = mmap(NULL, WMAINrByte, PROT_READ | PROT_WRITE,
+void RvPrgInit(RvPrg* p) {
+  p->WMAram = mmap(NULL, WMAINrByteR, PROT_READ | PROT_WRITE,
                   MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   if (p->WMAram == MAP_FAILED) {
     perror("mmap");
     exit(EXIT_FAILURE);
   }
-  if (madvise(p->WMAram, WMAINrByte, MADV_HUGEPAGE) != 0)
+  if (madvise(p->WMAram, WMAINrByteR, MADV_HUGEPAGE) != 0)
     perror("madvise");
-  p->Iram = (DmmInstr*)(p->WMAram + WramSize + MramSize);
+  p->Iram = (RvInstr*)(p->WMAram + WramSizeR + MramSizeR);
 }
-void DmmPrgFini(DmmPrg* p) {
-  munmap(p->WMAram, WMAINrByte);
+void RvPrgFini(RvPrg* p) {
+  if (p->WMAram != NULL)
+    munmap(p->WMAram, WMAINrByteR);
 }
 
-size_t DmmPrgLoadBinary(DmmPrg *p, const char *filename, DmmMap symbols,
-                        bool paged[WMAINrPage]) {
-  if (paged != NULL) memset(paged, 0, WMAINrPage);
-
+size_t RvPrgLoadBinary(RvPrg *p, const char *filename, DmmMap symbols,
+                       bool paged[WMAINrPageR]) {
+  if (paged != NULL) memset(paged, 0, WMAINrPageR);
   size_t iram_count = 0;
   // open elf boilerplate
   if (elf_version(EV_CURRENT) == EV_NONE) {
@@ -324,6 +324,7 @@ size_t DmmPrgLoadBinary(DmmPrg *p, const char *filename, DmmMap symbols,
     fprintf(stderr, "elf_getshdrstrndx failed: %s\n", elf_errmsg(-1));
     goto die;
   }
+  RvPrgInit(p);
 
   while ((scn = elf_nextscn(elf, scn)) != NULL) {
     GElf_Shdr shdr;
@@ -358,7 +359,7 @@ size_t DmmPrgLoadBinary(DmmPrg *p, const char *filename, DmmMap symbols,
       if (shdr.sh_type != SHT_PROGBITS) continue;
       uint32_t *instructions = (uint32_t*)data->d_buf;
       size_t instr_count = data->d_size / 4;
-      for (size_t i = 0; i < instr_count && iram_count < IramNrInstr; i++) {
+      for (size_t i = 0; i < instr_count && iram_count < IramNrInstrR; i++) {
         uint32_t raw_instr = instructions[i];
         // Convert endianness if needed
         if (ehdr.e_ident[EI_DATA] == ELFDATA2MSB)
@@ -368,7 +369,8 @@ size_t DmmPrgLoadBinary(DmmPrg *p, const char *filename, DmmMap symbols,
     }
 
     // Handle WRAM data sections
-    else if (strcmp(section_name, ".data") == 0) {
+    else if (strcmp(section_name, ".data") == 0 ||
+             strcmp(section_name, ".sdata") == 0) {
       memcpy(p->WMAram + shdr.sh_addr, data->d_buf, data->d_size);
       // Mark WRAM pages as used
       if (paged != NULL)
@@ -379,7 +381,7 @@ size_t DmmPrgLoadBinary(DmmPrg *p, const char *filename, DmmMap symbols,
     // Handle MRAM sections
     else if (strcmp(section_name, ".mram") == 0) {
       // MRAM starts after WRAM in our memory layout
-      size_t off = WramSize + shdr.sh_addr - MramBegin;
+      size_t off = WramSizeR + shdr.sh_addr - MramBeginR;
       memcpy(p->WMAram + off, data->d_buf, data->d_size);
       // Mark MRAM pages as used
       if (paged != NULL)

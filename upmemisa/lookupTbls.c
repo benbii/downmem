@@ -1,6 +1,6 @@
-#include "downmem.h"
+#include "dmminternal.h"
 
-uint8_t DmmOpWbMode[NrOpcode] = {
+uint8_t UmmOpWbMode[NrOpcode] = {
   [LDMA]=noWb, [LDMAI]=noWb, [SDMA]=noWb, [MUL_STEP]=wbZf, [DIV_STEP]=noWb,
   [MOVD]=noWb, [MOVE]=wbZf, [SWAPD]=noWb, [LD]=noWb, [LW]=wbNoZf, [LBS]=wbNoZf,
   [LBU]=wbNoZf, [LHS]=wbNoZf, [LHU]=wbNoZf, [SB]=noWb, [SH]=noWb, [SW]=noWb,
@@ -48,7 +48,7 @@ uint8_t DmmOpWbMode[NrOpcode] = {
   [LSL_SUB_U]=wbShAdd_u,
 };
 
-const char* DmmOpStr[NrOpcode] = {
+const char* UmmOpStr[NrOpcode] = {
   [LDMA]="ldma", [SDMA]="sdma", [LDMAI]="ldmai", [MUL_STEP]="mul_step",
   [DIV_STEP]="div_step", [MOVD]="movd", [MOVE]="move", [SWAPD]="swapd",
   [LD]="ld", [LW]="lw", [LBS]="lbs", [LBU]="lbu", [LHS]="lhs", [LHU]="lhu",
@@ -105,31 +105,31 @@ const char* DmmOpStr[NrOpcode] = {
   [LSR_ADD_U]="lsr_add.u", [LSL_ADD_U]="lsl_add.u", [LSL_SUB_U]="lsl_sub.u",
 };
 
-const char *DmmCcStr[NrConds] = {
+const char *UmmCcStr[NrConds] = {
     "",    "true",  "false", "z",    "nz",   "sz",    "snz",   "pl",
     "mi",  "spl",   "smi",   "v",    "nv",   "c",     "nc",    "ltu",
     "geu", "leu",   "gtu",   "lts",  "ges",  "les",   "gts",   "eq",
     "neq", "xz",    "xnz",   "xleu", "xgtu", "xles",  "xgts",  "se",
     "so",  "nsh32", "sh32",  "max",  "nmax", "small", "large",
 };
-const char *DmmJccStr[NrConds] = {
+const char *UmmJccStr[NrConds] = {
     NULL,  NULL,  NULL,  NULL, NULL,  "z",   "nz",  NULL,  NULL,  "spl",
     "smi", NULL,  NULL,  NULL, NULL,  "ltu", "geu", "leu", "gtu", "lts",
     "ges", "les", "gts", "eq", "neq", NULL,  NULL,  NULL,  NULL,  NULL,
     NULL,  NULL,  NULL,  NULL, NULL,  NULL,  NULL,  NULL,  NULL,
 };
 
-DmmMap DmmStrToOpcode, DmmStrToCc, DmmStrToJcc;
+DmmMap UmmStrToOpcode, UmmStrToCc, UmmStrToJcc;
 __attribute__((constructor)) static void init() {
-  DmmStrToOpcode = DmmMapInit(512);
-  DmmStrToCc = DmmMapInit(128);
-  DmmStrToJcc = DmmMapInit(64);
+  UmmStrToOpcode = DmmMapInit(512);
+  UmmStrToCc = DmmMapInit(128);
+  UmmStrToJcc = DmmMapInit(64);
   for (size_t i = 0; i < NrOpcode; ++i)
-    DmmMapAssign(DmmStrToOpcode, DmmOpStr[i], strlen(DmmOpStr[i]), i);
+    DmmMapAssign(UmmStrToOpcode, UmmOpStr[i], strlen(UmmOpStr[i]), i);
   for (size_t i = 1; i < NrConds; ++i) {
-    DmmMapAssign(DmmStrToCc, DmmCcStr[i], strlen(DmmCcStr[i]), i);
-    if (DmmJccStr[i] != NULL)
-      DmmMapAssign(DmmStrToJcc, DmmJccStr[i], strlen(DmmJccStr[i]), i);
+    DmmMapAssign(UmmStrToCc, UmmCcStr[i], strlen(UmmCcStr[i]), i);
+    if (UmmJccStr[i] != NULL)
+      DmmMapAssign(UmmStrToJcc, UmmJccStr[i], strlen(UmmJccStr[i]), i);
   }
 }
 

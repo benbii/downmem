@@ -1,10 +1,11 @@
-find_package(OpenMP REQUIRED)
+# Device-side applications CMakeLists.txt
+# Builds DPU programs for both RISC-V and UPMEM ISA targets
+# Create a meta-target to build all DPU examples
+add_custom_target(dpuExamples)
 
-@PACKAGE_INIT@
-
-include("${CMAKE_CURRENT_LIST_DIR}/DmmTargets.cmake")
-
-# Helper functions for building DPU applications
+# =================================================================
+# RISC-V DPU applications
+# =================================================================
 
 # rvbin_make(TARGET NR_TASKLETS [EXTRA_FLAGS])
 function(rvbin_make TARGET NR_TASKLETS)
@@ -22,6 +23,23 @@ function(rvbin_make TARGET NR_TASKLETS)
             RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/rvbins
   )
 endfunction()
+
+if(DMM_RV)
+  foreach(PROGRAM NW SCAN TS)
+    add_executable(rv${PROGRAM} ${PROGRAM}.c)
+    rvbin_make(rv${PROGRAM} 16 -flto -Og)
+    add_dependencies(dpuExamples rv${PROGRAM})
+  endforeach()
+  foreach(PROGRAM BFS BS COMPACT GEMV HST MLP OPDEMO OPDEMOF RED SPMV TRNS UNI VA)
+    add_executable(rv${PROGRAM} ${PROGRAM}.c)
+    rvbin_make(rv${PROGRAM} 16 -flto -O3)
+    add_dependencies(dpuExamples rv${PROGRAM})
+  endforeach()
+endif()
+
+# =================================================================
+# UPMEM DPU applications
+# =================================================================
 
 # upmembin_make(TARGET NR_TASKLETS [EXTRA_FLAGS])
 function(upmembin_make TARGET NR_TASKLETS)
@@ -59,3 +77,14 @@ function(upmembin_make TARGET NR_TASKLETS)
   # Create target for objdump file
   add_custom_target(umm${PROGRAM_NAME} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/objdumps/${PROGRAM_NAME}.objdump)
 endfunction()
+
+if(DMM_UPMEM)
+  # Build UPMEM programs using wrapper function
+  foreach(A BS COMPACT GEMV HST MLP OPDEMO OPDEMOF SPMV NW RED SCAN TRNS TS UNI VA VA-SIMPLE BFS)
+    # Add executable is not in the function to allow for dev apps with multiple files
+    add_executable(ummbin${A} ${A}.c)
+    upmembin_make(ummbin${A} 16)
+    add_dependencies(dpuExamples umm${A})
+  endforeach()
+endif()
+

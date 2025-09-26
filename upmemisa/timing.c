@@ -1,18 +1,18 @@
-#include "downmem.h"
+#include "dmminternal.h"
 #include <stdio.h>
 
-static void servePipeline(DmmTiming* this) {
+static void servePipeline(UmmTiming* this) {
   // If there's space in pipeline (i.e. not full) push the incoming instruction
   // The incoming instruction may not be set by scheduler and therefore 0x1
   if (((this->PpQRear - this->PpQFrt) & 15) < NrPipelineStage - 1) {
     this->PpInsideInstrs[this->PpQRear] = this->PpInInstr;
     this->PpInsideIds[this->PpQRear] = this->PpInId;
     this->PpQRear = (this->PpQRear + 1) & 15;
-    this->PpInInstr = (DmmInstr*)1;
+    this->PpInInstr = (UmmInstr*)1;
   }
   // If no instruction is ready, pop from the queue
   if (this->PpReadyInstr == NULL) {
-    DmmInstr* instr = this->PpInsideInstrs[this->PpQFrt];
+    UmmInstr* instr = this->PpInsideInstrs[this->PpQFrt];
     long id = this->PpInsideIds[this->PpQFrt];
     this->PpQFrt = (this->PpQFrt + 1) & 15;
     this->PpReadyInstr = instr;
@@ -21,12 +21,12 @@ static void servePipeline(DmmTiming* this) {
   }
 }
 
-static void serveCycleRule(DmmTiming* this) {
+static void serveCycleRule(UmmTiming* this) {
   if (this->CrCurInstr != NULL && this->CrPrevInstr == NULL) {
-    DmmInstr* instr = this->CrCurInstr;
+    UmmInstr* instr = this->CrCurInstr;
     this->CrCurInstr = NULL;
     long thread_id = this->CrCurId;
-    DmmOpcode op = instr->Opcode;
+    UmmOpcode op = instr->Opcode;
 
     uint64_t curRead;
     if (op == DIV_STEP || op == MUL_STEP || op == SD ||
@@ -48,10 +48,10 @@ static void serveCycleRule(DmmTiming* this) {
   }
 
   if (this->CrPrevInstr != NULL && this->CrExtraCycleLeft <= 0) {
-    DmmInstr* instr = this->CrPrevInstr;
+    UmmInstr* instr = this->CrPrevInstr;
     this->CrPrevInstr = NULL;
     long thread_id = this->CrPrevId;
-    DmmOpcode op = instr->Opcode;
+    UmmOpcode op = instr->Opcode;
     _Static_assert(LD + 1 == SOpcodeStart, "please dude");
     if (op >= LD) {
       this->CrPrevWriteRegSets[thread_id] = (3ull << instr->RegC);
@@ -64,12 +64,12 @@ static void serveCycleRule(DmmTiming* this) {
   this->CrExtraCycleLeft -= 1;
 }
 
-void DmmTimingInit(DmmTiming *t, DmmInstr *iram, size_t memFreq,
+void UmmTimingInit(UmmTiming *t, UmmInstr *iram, size_t memFreq,
                    size_t logicFreq) {
-  memset(t, 0, sizeof(DmmTiming));
+  memset(t, 0, sizeof(UmmTiming));
   t->Iram = iram;
   for (long i = 0; i < MaxNumTasklets; i++) {
-    DmmTletInit(&t->Threads[i], i);
+    UmmTletInit(&t->Threads[i], i);
     t->lastPc[i] = IramNrInstr - 1;
   }
   t->FreqRatio = (double)memFreq / (double)logicFreq;
@@ -77,16 +77,16 @@ void DmmTimingInit(DmmTiming *t, DmmInstr *iram, size_t memFreq,
 
   // Push dummy entries to simulate initial pipeline stages
   for (size_t i = 0; i < NrPipelineStage - 1; i++) {
-    t->PpInsideInstrs[i] = (DmmInstr*)1;
+    t->PpInsideInstrs[i] = (UmmInstr*)1;
     t->PpInsideIds[i] = 0;
   }
   t->PpQFrt = 0;
   t->PpQRear = NrPipelineStage - 1;
-  t->PpInInstr = (DmmInstr*)1;
-  t->PpReadyInstr = (DmmInstr*)1;
+  t->PpInInstr = (UmmInstr*)1;
+  t->PpReadyInstr = (UmmInstr*)1;
 }
 
-DmmTlet* DmmTimingCycle(DmmTiming* this, size_t nrTasklets) {
+UmmTlet* UmmTimingCycle(UmmTiming* this, size_t nrTasklets) {
   long num_memory_cycles = (long)(
     this->FreqRatio * (double)this->StatNrCycle -
     this->FreqRatio * (double)(this->StatNrCycle - 1));
@@ -95,14 +95,14 @@ DmmTlet* DmmTimingCycle(DmmTiming* this, size_t nrTasklets) {
   }
   this->StatNrCycle++;
   // printf("\nc%ld ", this->StatNrCycle);
-  DmmTlet* ret = NULL;
+  UmmTlet* ret = NULL;
 
-  if (this->PpInInstr != (DmmInstr*)1 || this->CrCurInstr != NULL) {
+  if (this->PpInInstr != (UmmInstr*)1 || this->CrCurInstr != NULL) {
     this->StatNrRfHazard += 1;
   } else {
     bool is_blocked = false;
     for (long i = 0; i < nrTasklets; i++) {
-      DmmTlet* thread = &this->Threads[this->lastIssue];
+      UmmTlet* thread = &this->Threads[this->lastIssue];
       this->lastIssue++;
       if (this->lastIssue == nrTasklets) { this->lastIssue = 0; }
       if (this->lastRunAt[this->lastIssue] + NrRevolveCycle > this->StatNrCycle) {
@@ -113,8 +113,8 @@ DmmTlet* DmmTimingCycle(DmmTiming* this, size_t nrTasklets) {
         continue;
       }
 
-      size_t pc = (thread->Pc & IramMask) / IramDataByte;
-      DmmInstr* instr = &this->Iram[pc];
+      size_t pc = (thread->Pc & IramMask) / IramNrByte;
+      UmmInstr* instr = &this->Iram[pc];
       this->PpInInstr = instr;
       this->PpInId = thread->Id;
       _Static_assert(SDMA == 2 && LDMAI == 1 && LDMA == 0, "Please dude");
@@ -127,7 +127,7 @@ DmmTlet* DmmTimingCycle(DmmTiming* this, size_t nrTasklets) {
         thread->State = BLOCK;
       }
 
-      // printf("t%d %s %d %d %d", thread->Id, DmmOpStr[instr->Opcode],
+      // printf("t%d %s %d %d %d", thread->Id, UmmOpStr[instr->Opcode],
       //        instr->RegC, instr->RegA, instr->RegB);
       this->StatTsc[this->lastPc[this->lastIssue]] +=
         this->StatNrCycle - this->lastRunAt[this->lastIssue];
@@ -142,10 +142,10 @@ DmmTlet* DmmTimingCycle(DmmTiming* this, size_t nrTasklets) {
   }
 
   if (this->CrCurInstr == NULL) {
-    DmmInstr* instruction_ = this->PpReadyInstr;
+    UmmInstr* instruction_ = this->PpReadyInstr;
     long id = this->PpReadyId;
     this->PpReadyInstr = NULL;
-    if (instruction_ != (DmmInstr*)1) {
+    if (instruction_ != (UmmInstr*)1) {
       this->CrCurInstr = instruction_;
       this->CrCurId = id;
     }

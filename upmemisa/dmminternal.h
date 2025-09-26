@@ -32,7 +32,7 @@ typedef enum {
   SE, SO, NSH32, SH32, MAX, NMAX, SMALL, LARGE,
   NrConds,
   badCond = 0xdead
-} DmmCc;
+} UmmCc;
 
 typedef enum {
   LDMA, LDMAI, SDMA, MOVE, LW, LBS, LBU, LHS, LHU, SB, SH, SW, SB_ID,
@@ -61,9 +61,9 @@ typedef enum {
   NrOpcode,
   SOpcodeStart = MOVE_S,
   UOpcodeStart = MOVE_U
-} DmmOpcode;
+} UmmOpcode;
 
-enum DmmOpWbMode {
+enum UmmOpWbMode {
   noWb, // No writeback
   wbNoZf, // write result back but keep ZeroFlag unchanged
   wbZf, // update ZeroFlag write result back
@@ -77,66 +77,66 @@ enum DmmOpWbMode {
 };
 
 // --- Lookup Table Declarations ---
-extern uint8_t DmmOpWbMode[NrOpcode];
-extern const char *DmmOpStr[NrOpcode], *DmmOpStr[NrOpcode], *DmmCcStr[NrConds];
-extern DmmMap DmmStrToOpcode, DmmStrToCc, DmmStrToJcc;
+extern uint8_t UmmOpWbMode[NrOpcode];
+extern const char *UmmOpStr[NrOpcode], *UmmOpStr[NrOpcode], *UmmCcStr[NrConds];
+extern DmmMap UmmStrToOpcode, UmmStrToCc, UmmStrToJcc;
 
 // --- Instruction Struct ---
-typedef struct DmmInstr {
-  DmmOpcode Opcode;
-  DmmCc Cond;
+typedef struct UmmInstr {
+  UmmOpcode Opcode;
+  UmmCc Cond;
   size_t RegA, RegB, RegC;
   size_t ImmA, ImmB;
-} DmmInstr;
+} UmmInstr;
 
 // --- Program Struct and Member Functions ---
-typedef struct DmmPrg {
+typedef struct UmmPrg {
   uint8_t* WMAram;
-  DmmInstr* Iram;
-} DmmPrg;
+  UmmInstr* Iram;
+} UmmPrg;
 enum {
-  _WMAINrByteR = WramSize + MramSize + AtomicSize + IramNrInstr * sizeof(DmmInstr),
-  WMAINrPageR = (_WMAINrByteR + 4095) / 4096,
-  WMAINrByteR = WMAINrPageR * 4096
+  _WMAINrByte = WramSize + MramSize + AtomicSize + IramNrInstr * sizeof(UmmInstr),
+  WMAINrPage = (_WMAINrByte + 4095) / 4096,
+  WMAINrByte = WMAINrPage * 4096
 };
-void DmmPrgInit(DmmPrg* p);
-void DmmPrgFini(DmmPrg* p);
-size_t DmmPrgLoadBinary(DmmPrg *p, const char *filename, DmmMap symbols,
-                         bool paged[WMAINrPageR]);
+void UmmPrgInit(UmmPrg* p);
+void UmmPrgFini(UmmPrg* p);
+size_t UmmPrgLoadBinary(UmmPrg *p, const char *filename, DmmMap symbols,
+                         bool paged[WMAINrPage]);
 
 // --- Tasklet ---
-typedef enum { SLEEP, RUNNABLE, BLOCK } DmmTletState;
+typedef enum { SLEEP, RUNNABLE, BLOCK } UmmTletState;
 typedef struct {
   size_t Id;
   uint8_t CarryFlag;
-  DmmTletState State;
+  UmmTletState State;
   size_t Pc;
   uint32_t Regs[NumGpRegisters + 10];
-} DmmTlet;
-void DmmTletInit(DmmTlet* tl, uint8_t id);
+} UmmTlet;
+void UmmTletInit(UmmTlet* tl, uint8_t id);
 
 // --- Top-level Timing Struct ---
 typedef struct Timing {
-  DmmTlet Threads[MaxNumTasklets];
-  DmmInstr *Iram;
+  UmmTlet Threads[MaxNumTasklets];
+  UmmInstr *Iram;
   double FreqRatio;
   DmmMramTiming MramTiming;
 
   // Variables to track which threads and instructions are in pipeline
-  DmmInstr* PpInInstr;
+  UmmInstr* PpInInstr;
   long PpInId;
   // instrs inside the pipeline, maintained using a queue to avoid moving
-  DmmInstr* PpInsideInstrs[16];
+  UmmInstr* PpInsideInstrs[16];
   uint_fast8_t PpInsideIds[16];
   uint_fast8_t PpQFrt;
   uint_fast8_t PpQRear;
   // instr that completed the pipeline to be reaped
-  DmmInstr* PpReadyInstr;
+  UmmInstr* PpReadyInstr;
   long PpReadyId;
 
   // Fields to enforce register binning rules
-  DmmInstr* CrCurInstr;
-  DmmInstr* CrPrevInstr;
+  UmmInstr* CrCurInstr;
+  UmmInstr* CrPrevInstr;
   long CrCurId;
   long CrPrevId;
   long CrExtraCycleLeft;
@@ -154,26 +154,26 @@ typedef struct Timing {
   long lastRunAt[MaxNumTasklets];
   size_t lastPc[MaxNumTasklets];
   uint32_t StatTsc[IramNrInstr];
-} DmmTiming;
+} UmmTiming;
 
-void DmmTimingInit(DmmTiming *t, DmmInstr *iram, size_t memFreq, size_t logicFreq);
+void UmmTimingInit(UmmTiming *t, UmmInstr *iram, size_t memFreq, size_t logicFreq);
 // Discard the instruction return value
-DmmTlet* DmmTimingCycle(DmmTiming *t, size_t nrTasklets);
-static inline void DmmTimingFini(DmmTiming* t) {
+UmmTlet* UmmTimingCycle(UmmTiming *t, size_t nrTasklets);
+static inline void UmmTimingFini(UmmTiming* t) {
   DmmMramTimingFini(&t->MramTiming);
 }
 
 // --- DMM Simulated DPU Interface ---
-typedef struct DmmDpu {
-  DmmPrg Program;
-  DmmTiming Timing;
-} DmmDpu;
-void DmmDpuInit(DmmDpu* d, size_t memFreq, size_t logicFreq);
-void DmmDpuRun(DmmDpu* d, size_t nrTasklets);
-void DmmDpuExecuteInstr(DmmDpu* d, DmmTlet* thread);
-static inline void DmmDpuFini(DmmDpu* d) {
-  DmmPrgFini(&d->Program);
-  DmmTimingFini(&d->Timing);
+typedef struct UmmDpu {
+  UmmPrg Program;
+  UmmTiming Timing;
+} UmmDpu;
+void UmmDpuInit(UmmDpu* d, size_t memFreq, size_t logicFreq);
+void UmmDpuRun(UmmDpu* d, size_t nrTasklets);
+void UmmDpuExecuteInstr(UmmDpu* d, UmmTlet* thread);
+static inline void UmmDpuFini(UmmDpu* d) {
+  UmmPrgFini(&d->Program);
+  UmmTimingFini(&d->Timing);
 }
 
 // --- Objdump Parsing Functions ---

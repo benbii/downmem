@@ -6,10 +6,11 @@
 #endif
 
 #include "dpu.h"
-#include <downmem.h>
+#include "downmem.h"
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
@@ -19,30 +20,8 @@ static size_t dmmDpuSize;
 static size_t logicFreq;
 static size_t memFreq;
 static char* dumpFile;
-
-static void __attribute__((constructor)) a() {
-  const char* e = getenv("DMM_NR_SIM_THRDS");
-  if (e != NULL) nrCore = strtoul(e, NULL, 0);
-  e = getenv("DMM_NR_XFER_THRDS");
-  if (e != NULL) nrXferCore = strtoul(e, NULL, 0);
-  e = getenv("DMM_LogicFrequency");
-  if (e != NULL) logicFreq = strtoul(e, NULL, 0);
-  e = getenv("DMM_MemoryFrequency");
-  if (e != NULL) memFreq = strtoul(e, NULL, 0);
-  e = getenv("DMM_TscDumpFmt");
-  if (e != NULL) dumpFile = strdup(e);
-
-  if (nrCore <= 0 || nrCore > 512) nrCore = sysconf(_SC_NPROCESSORS_ONLN);
-  if (nrXferCore <= 0 || nrXferCore > 512) nrXferCore = 8;
-  if (logicFreq <= 0) logicFreq = 350;
-  if (memFreq <= 0) memFreq = 2400;
-
-  dmmDpuSize = sysconf(_SC_PAGESIZE);
-  while (dmmDpuSize < sizeof(DmmDpu))
-    dmmDpuSize += 4096;
-}
-static inline DmmDpu* _dptr(size_t i, struct dpu_set_t s) {
-  return (DmmDpu*)((uintptr_t)s.dmm_dpu + dmmDpuSize * i);
+static inline struct DmmDpu* _dptr(size_t i, struct dpu_set_t s) {
+  return (struct DmmDpu*)((uintptr_t)s.dmm_dpu + dmmDpuSize * i);
 }
 
 dpu_error_t dpu_alloc(uint32_t nrDpu, const char *_, struct dpu_set_t *set) {
@@ -62,57 +41,46 @@ dpu_error_t dpu_alloc(uint32_t nrDpu, const char *_, struct dpu_set_t *set) {
     return DPU_ERR_ALLOCATION;
   }
   set->begin = 0; set->end = nrDpu;
-
-  #pragma omp parallel num_threads(nrCore)
-  {
-    const size_t coreId = omp_get_thread_num();
-#ifdef __DMM_NUMA
-    const size_t numaMsk = 1ULL << numa_node_of_cpu(coreId);
-    cpu_set_t cpuset; CPU_ZERO(&cpuset); CPU_SET(coreId, &cpuset);
-    if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0)
-      perror("sched_setaffinity");
-#endif
-
-    for (size_t dId = coreId; dId < nrDpu; dId += nrCore) {
-      DmmDpu *dmmdpu = _dptr(dId, *set);
-      DmmDpuInit(dmmdpu, memFreq, logicFreq);
-      // bind the DPU structure (containing things like register files) and its
-#ifdef __DMM_NUMA
-      // WRAM MRAM to the corresponding NUMA node
-      if (mbind(dmmdpu, DmmDpuSize, MPOL_BIND, &numaMsk, sizeof(size_t), 0) ||
-          mbind(dmmdpu->Program.WMAram, WMANrByte, MPOL_BIND, &numaMsk,
-                sizeof(size_t), 0))
-        continue;
-#endif
-    }
-  }
+  for (size_t i = 0; i < nrDpu; ++i)
+    set->dmm_dpu[i].Is = 0;
   return DPU_OK;
 }
-
 dpu_error_t dpu_alloc_ranks(uint32_t nrRank, const char *_,
                             struct dpu_set_t *set) {
   return dpu_alloc(nrRank * 64, _, set);
 }
 
-dpu_error_t dpu_free(struct dpu_set_t set) {
+static dpu_error_t _unload(struct dpu_set_t set) {
   dpu_error_t err = DPU_OK;
   static size_t nrDump = 0;
+  struct DmmDpu *firstDpu = (struct DmmDpu*)set.dmm_dpu;
+  if (firstDpu->Is == UNINIT_DPUIS) return err;
+
   if (dumpFile != NULL) {
     size_t nthDump = nrDump++, nrInstr = 0;
-    for (size_t i = 0; i < IramNrInstr; ++i)
-      if (set.dmm_dpu->Program.Iram[i].Opcode != 0)
+    for (size_t i = 0; i < IramNrInstrR; ++i) {
+      bool hasInstr = firstDpu->Is == RV_DPUIS ?
+        (firstDpu->R.Program.Iram[i].Opcode != 0) :
+        (firstDpu->U.Program.Iram[i].Opcode != 0);
+      if (hasInstr)
         nrInstr = i;
+    }
     char name[strlen(dumpFile) + 16];
     sprintf(name, dumpFile, nthDump);
     FILE *dump = fopen(name, "w");
-    if (dump == NULL) { err = DPU_ERR_VPD_INVALID_FILE; goto cleanup; }
+    if (dump == NULL) return DPU_ERR_VPD_INVALID_FILE;
 
     for (size_t i = set.begin; i < set.end; ++i) {
       fprintf(dump, "DPU %zu\n", i);
+      struct DmmDpu* d = _dptr(i, set);
       for (size_t j = 0; j < nrInstr; ++j) {
-        DmmDpu* d = _dptr(i, set);
-        fprintf(dump, "%04zx %u %s\n", j * 8, d->Timing.StatTsc[j],
-                DmmOpStr[d->Program.Iram[j].Opcode]);
+        if (d->Is == RV_DPUIS) {
+          fprintf(dump, "%04zx %u %s\n", j * InstrNrByteR, d->R.Timing.StatTsc[j],
+                  RvOpStr[d->R.Program.Iram[j].Opcode]);
+        } else {
+          fprintf(dump, "%04zx %u %s\n", j * IramNrByte, d->U.Timing.StatTsc[j],
+                  UmmOpStr[d->U.Program.Iram[j].Opcode]);
+        }
       }
       fputc('\n', dump);
     }
@@ -121,31 +89,54 @@ dpu_error_t dpu_free(struct dpu_set_t set) {
 
   size_t nrExec = 0, nrCycle = 0, bdRun = 0, bdDma = 0, bdRf = 0, bdPipe = 0;
   for (size_t i = set.begin; i < set.end; ++i) {
-    DmmDpu *dpu_ = _dptr(i, set);
-    nrExec += dpu_->Timing.StatNrInstrExec;
-    nrCycle += dpu_->Timing.StatNrCycle;
-    bdRun += dpu_->Timing.StatRun;
-    bdDma += dpu_->Timing.StatDma;
-    bdPipe += dpu_->Timing.StatEtc;
-    bdRf += dpu_->Timing.StatNrRfHazard;
-    DmmDpuFini(dpu_);
+    struct DmmDpu *dpu_ = _dptr(i, set);
+    if (dpu_->Is == RV_DPUIS) {
+      nrExec += dpu_->R.Timing.StatNrInstrExec;
+      nrCycle += dpu_->R.Timing.StatNrCycle;
+      bdRun += dpu_->R.Timing.StatRun;
+      bdDma += dpu_->R.Timing.StatDma;
+      bdPipe += dpu_->R.Timing.StatEtc;
+      bdRf += dpu_->R.Timing.StatNrRfHazard;
+      RvDpuFini(&dpu_->R);
+    } else {
+      nrExec += dpu_->U.Timing.StatNrInstrExec;
+      nrCycle += dpu_->U.Timing.StatNrCycle;
+      bdRun += dpu_->U.Timing.StatRun;
+      bdDma += dpu_->U.Timing.StatDma;
+      bdPipe += dpu_->U.Timing.StatEtc;
+      bdRf += dpu_->U.Timing.StatNrRfHazard;
+      UmmDpuFini(&dpu_->U);
+    }
   }
   printf("%zu %zu\n%zu %zu %zu %zu\n", nrExec, nrCycle, bdRun, bdDma, bdPipe, bdRf);
+  return DPU_OK;
+}
 
-cleanup:
+dpu_error_t dpu_free(struct dpu_set_t set) {
+  dpu_error_t err = _unload(set);
   DmmMapFini(set.symbols);
   free(set.xfer_addr);
   munmap(set.dmm_dpu, dmmDpuSize * (set.end - set.begin));
   return err;
 }
 
+// don't use this dirty trick...
+// _Static_assert(offsetof(struct DmmDpu, r.Program.WMAram) ==
+//                offsetof(struct DmmDpu, u.Program.WMAram),
+//                "WMAram dereference breaks!");
+
 dpu_error_t dpu_load(struct dpu_set_t set, const char *objdmpPath, void **_) {
+  _unload(set);
+  DmmMapClear(set.symbols);
   bool paged[WMAINrPage];
-  DmmPrg prg; DmmPrgInit(&prg);
-  size_t nrInstr = DmmPrgLoadBinary(&prg, objdmpPath, set.symbols, paged);
-  if (nrInstr == 0)
-    return DPU_ERR_ELF_INVALID_FILE;
-  uint8_t *prgWma = prg.WMAram;
+  UmmPrg uprg = {NULL, NULL}; RvPrg rprg = {NULL, NULL};
+  size_t nrInstr = UmmPrgLoadBinary(&uprg, objdmpPath, set.symbols, paged);
+  uint8_t *prgWma = uprg.WMAram;
+  if (nrInstr == 0) {
+    if ((nrInstr = RvPrgLoadBinary(&rprg, objdmpPath, set.symbols, paged)) == 0)
+      return DPU_ERR_ELF_INVALID_FILE;
+    prgWma = rprg.WMAram;
+  }
 
   #pragma omp parallel num_threads(nrXferCore)
   {
@@ -162,21 +153,36 @@ dpu_error_t dpu_load(struct dpu_set_t set, const char *objdmpPath, void **_) {
       dpuId += nrCore;
     while (dpuId < set.end) {
       DmmDpu *dpu = _dptr(dpuId, set);
-      uint8_t *dpuWma = dpu->Program.WMAram;
-      for (size_t i = 0; i < WMAINrPage; ++i)
-        if (paged[i])
-          memcpy(&dpuWma[i*4096], &prgWma[i * 4096], 4096);
-      for (size_t i = 0; i < nrInstr; ++i)
-        dpu->Program.Iram[i] = prg.Iram[i];
+      if (prgWma == rprg.WMAram) {
+        RvDpuInit(&dpu->R, memFreq, logicFreq);
+        dpu->Is = RV_DPUIS;
+        uint8_t *dpuWma = dpu->R.Program.WMAram;
+        for (size_t i = 0; i < WMAINrPageR; ++i)
+          if (paged[i])
+            memcpy(&dpuWma[i*4096], &prgWma[i * 4096], 4096);
+        for (size_t i = 0; i < nrInstr; ++i)
+          dpu->R.Program.Iram[i] = rprg.Iram[i];
+      } else {
+        UmmDpuInit(&dpu->U, memFreq, logicFreq);
+        dpu->Is = UMM_DPUIS;
+        uint8_t *dpuWma = dpu->U.Program.WMAram;
+        for (size_t i = 0; i < WMAINrPage; ++i)
+          if (paged[i])
+            memcpy(&dpuWma[i*4096], &prgWma[i * 4096], 4096);
+        for (size_t i = 0; i < nrInstr; ++i)
+          dpu->U.Program.Iram[i] = uprg.Iram[i];
+      }
       dpuId += nrXferCore;
     }
   }
 
-  DmmPrgFini(&prg);
+  UmmPrgFini(&uprg); RvPrgFini(&rprg);
   return DPU_OK;
 }
 
 dpu_error_t dpu_launch(struct dpu_set_t set, dpu_launch_policy_t _) {
+  if (set.dmm_dpu[set.begin].Is == UNINIT_DPUIS)
+    return DPU_ERR_NO_PROGRAM_LOADED;
   #pragma omp parallel num_threads(nrCore)
   {
     size_t dpuId = omp_get_thread_num();
@@ -191,8 +197,12 @@ dpu_error_t dpu_launch(struct dpu_set_t set, dpu_launch_policy_t _) {
     while (dpuId < set.begin)
       dpuId += nrCore;
     while (dpuId < set.end) {
-      DmmDpu *dpu = _dptr(dpuId, set);
-      DmmDpuRun(dpu, nrTl);
+      struct DmmDpu *dpu = _dptr(dpuId, set);
+      if (dpu->Is == RV_DPUIS) {
+        RvDpuRun(&dpu->R, nrTl);
+      } else {
+        UmmDpuRun(&dpu->U, nrTl);
+      }
       dpuId += nrCore;
     }
   }
@@ -223,8 +233,8 @@ dpu_push_xfer(struct dpu_set_t set, dpu_xfer_t xfer, const char *symName,
          ty & 1 ? "dToH" : "hToD", set.end - set.begin, length,
          DmmXferOverhead(set.end - set.begin, set.xfer_addr, length, ty));
 #endif
-  if (dAddr >= MramBegin)
-    dAddr = WramSize + dAddr - MramBegin;
+  if (dAddr >= MramBeginR)
+    dAddr = WramSize + dAddr - MramBeginR;
   dAddr += symOff;
 
   // Single theaded xfer for small sizes
@@ -232,11 +242,13 @@ dpu_push_xfer(struct dpu_set_t set, dpu_xfer_t xfer, const char *symName,
     for (size_t i = set.begin; i < set.end; ++i) {
       if (set.xfer_addr[i] == NULL)
         continue;
-      DmmDpu *dpu = _dptr(i, set);
+      struct DmmDpu *dpu = _dptr(i, set);
+      uint8_t *dpuWma =
+          dpu->Is == RV_DPUIS ? dpu->R.Program.WMAram : dpu->U.Program.WMAram;
       if (xfer == DPU_XFER_TO_DPU)
-        memcpy(&dpu->Program.WMAram[dAddr], set.xfer_addr[i], length);
+        memcpy(&dpuWma[dAddr], set.xfer_addr[i], length);
       else
-        memcpy(set.xfer_addr[i], &dpu->Program.WMAram[dAddr], length);
+        memcpy(set.xfer_addr[i], &dpuWma[dAddr], length);
       if (!(flag & DPU_XFER_NO_RESET))
         set.xfer_addr[i] = NULL;
     }
@@ -256,11 +268,13 @@ dpu_push_xfer(struct dpu_set_t set, dpu_xfer_t xfer, const char *symName,
       dpuId += nrCore;
     while (dpuId < set.end) {
       if (set.xfer_addr[dpuId] != NULL) {
-        DmmDpu *dpu = _dptr(dpuId, set);
+        struct DmmDpu *dpu = _dptr(dpuId, set);
+      uint8_t *dpuWma =
+          dpu->Is == RV_DPUIS ? dpu->R.Program.WMAram : dpu->U.Program.WMAram;
         if (xfer == DPU_XFER_TO_DPU)
-          memcpy(&dpu->Program.WMAram[dAddr], set.xfer_addr[dpuId], length);
+          memcpy(&dpuWma[dAddr], set.xfer_addr[dpuId], length);
         else
-          memcpy(set.xfer_addr[dpuId], &dpu->Program.WMAram[dAddr], length);
+          memcpy(set.xfer_addr[dpuId], &dpuWma[dAddr], length);
         if (!(flag & DPU_XFER_NO_RESET))
           set.xfer_addr[dpuId] = NULL;
       }
@@ -272,25 +286,29 @@ dpu_push_xfer(struct dpu_set_t set, dpu_xfer_t xfer, const char *symName,
 
 dpu_error_t dpu_copy_to(struct dpu_set_t set, const char *symName,
                         uint32_t symOff, const void *src, size_t length) {
-  DmmDpu *dpu = _dptr(set.begin, set);
+  struct DmmDpu *dpu = _dptr(set.begin, set);
   DmmSymAddr dAddr = DmmMapFetch(set.symbols, symName, strlen(symName)) ;
   if (dAddr == MapNoInt) return DPU_ERR_UNKNOWN_SYMBOL;
-  if (dAddr >= MramBegin)
-    dAddr = WramSize + dAddr - MramBegin;
+  if (dAddr >= MramBeginR)
+    dAddr = WramSize + dAddr - MramBeginR;
   dAddr += symOff;
-  memcpy(&dpu->Program.WMAram[dAddr], src, length);
+  uint8_t *dpuWma =
+      dpu->Is == RV_DPUIS ? dpu->R.Program.WMAram : dpu->U.Program.WMAram;
+  memcpy(&dpuWma[dAddr], src, length);
   return DPU_OK;
 }
 
 dpu_error_t dpu_copy_from(struct dpu_set_t set, const char *symName,
                           uint32_t symOff, void *dst, size_t length) {
-  DmmDpu *dpu = _dptr(set.begin, set);
+  struct DmmDpu *dpu = _dptr(set.begin, set);
   DmmSymAddr dAddr = DmmMapFetch(set.symbols, symName, strlen(symName)) ;
   if (dAddr == MapNoInt) return DPU_ERR_UNKNOWN_SYMBOL;
-  if (dAddr >= MramBegin)
-    dAddr = WramSize + dAddr - MramBegin;
+  if (dAddr >= MramBeginR)
+    dAddr = WramSize + dAddr - MramBeginR;
   dAddr += symOff;
-  memcpy(dst, &dpu->Program.WMAram[dAddr], length);
+  uint8_t *dpuWma =
+      dpu->Is == RV_DPUIS ? dpu->R.Program.WMAram : dpu->U.Program.WMAram;
+  memcpy(dst, &dpuWma[dAddr], length);
   return DPU_OK;
 }
 
@@ -307,15 +325,17 @@ dpu_broadcast_to(struct dpu_set_t set, const char *symName, uint32_t symOff,
          set.end - set.begin, length,
          DmmXferOverhead(set.end - set.begin, set.xfer_addr, length, ty));
 #endif
-  if (dAddr >= MramBegin)
-    dAddr = WramSize + dAddr - MramBegin;
+  if (dAddr >= MramBeginR)
+    dAddr = WramSize + dAddr - MramBeginR;
   dAddr += symOff;
   if (length <= 4096) {
     for (size_t i = set.begin; i < set.end; ++i) {
       if (set.xfer_addr[i] != NULL)
         ret = DPU_ERR_TRANSFER_ALREADY_SET;
-      DmmDpu *dpu = _dptr(i, set);
-      memcpy(&dpu->Program.WMAram[dAddr], src, length);
+      struct DmmDpu *dpu = _dptr(i, set);
+      uint8_t *dpuWma =
+          dpu->Is == RV_DPUIS ? dpu->R.Program.WMAram : dpu->U.Program.WMAram;
+      memcpy(&dpuWma[dAddr], src, length);
       if (!(flags & DPU_XFER_NO_RESET))
         set.xfer_addr[i] = NULL;
     }
@@ -336,8 +356,10 @@ dpu_broadcast_to(struct dpu_set_t set, const char *symName, uint32_t symOff,
     while (dpuId < set.end) {
       if (set.xfer_addr[dpuId] != NULL)
         ret = DPU_ERR_TRANSFER_ALREADY_SET;
-      DmmDpu *dpu = _dptr(dpuId, set);
-      memcpy(&dpu->Program.WMAram[dAddr], src, length);
+      struct DmmDpu *dpu = _dptr(dpuId, set);
+      uint8_t *dpuWma =
+          dpu->Is == RV_DPUIS ? dpu->R.Program.WMAram : dpu->U.Program.WMAram;
+      memcpy(&dpuWma[dAddr], src, length);
       if (!(flags & DPU_XFER_NO_RESET))
         set.xfer_addr[dpuId] = NULL;
       dpuId += nrXferCore;
@@ -379,8 +401,27 @@ char *dpu_error_to_string(dpu_error_t status) {
   ++status;
   if (status >= 0x2b) status = 0x2b;
   char *ret = strdup(errs[status] + (a ? 2 : 0));
-  if (ret == NULL) exit(1);
-  if (a) ret += 2;
   return ret;
 }
 
+static void __attribute__((constructor)) a() {
+  const char* e = getenv("DMM_NR_SIM_THRDS");
+  if (e != NULL) nrCore = strtoul(e, NULL, 0);
+  e = getenv("DMM_NR_XFER_THRDS");
+  if (e != NULL) nrXferCore = strtoul(e, NULL, 0);
+  e = getenv("DMM_LogicFrequency");
+  if (e != NULL) logicFreq = strtoul(e, NULL, 0);
+  e = getenv("DMM_MemoryFrequency");
+  if (e != NULL) memFreq = strtoul(e, NULL, 0);
+  e = getenv("DMM_TscDumpFmt");
+  if (e != NULL) dumpFile = strdup(e);
+
+  if (nrCore <= 0 || nrCore > 512) nrCore = sysconf(_SC_NPROCESSORS_ONLN);
+  if (nrXferCore <= 0 || nrXferCore > 512) nrXferCore = 8;
+  if (logicFreq <= 0) logicFreq = 350;
+  if (memFreq <= 0) memFreq = 2400;
+
+  dmmDpuSize = sysconf(_SC_PAGESIZE);
+  while (dmmDpuSize < sizeof(struct DmmDpu))
+    dmmDpuSize += 4096;
+}

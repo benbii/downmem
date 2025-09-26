@@ -32,7 +32,7 @@ fi
 git reset --hard HEAD
 git clean -fd
 git checkout llvmorg-20.1.8
-git apply "$MYDIR/rvupmem-llvm.patch"
+git apply "$MYDIR/rvupmem-llvm20.patch"
 cmake -GNinja -S llvm -B build "-DCMAKE_INSTALL_PREFIX=$1" \
   -DCMAKE_C_COMPILER="$C" -DCMAKE_CXX_COMPILER="$C++" \
   -DLLVM_ENABLE_LLD=ON -DLLVM_ENABLE_LTO=Thin \
@@ -54,6 +54,7 @@ rm -r "$1/scratch" || true
 mkdir -p build/crtrv32 && cd build/crtrv32
 cmake -S ../../compiler-rt -B. -GNinja \
   -DCMAKE_BUILD_TYPE=Release \
+  "-DLLVM_CONFIG_PATH=$1/bin/llvm-config" \
   "-DCMAKE_C_COMPILER=$1/bin/clang" \
   "-DCMAKE_CXX_COMPILER=$1/bin/clang++" \
   -DCMAKE_C_COMPILER_TARGET=riscv32-unknown-elf \
@@ -80,7 +81,7 @@ cp "$1/lib/clang/20/lib/baremetal/libclang_rt.builtins-riscv32.a" \
 cd "$MYDIR/.."
 rm -r build || true
 cmake -GNinja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release \
-  -S. -Bbuild -DDMM_ISA=riscv \
-  "-DCMAKE_C_COMPILER=$1/bin/clang" "-DCMAKE_INSTALL_PREFIX=$1" 
+  -S. -Bbuild "-DCMAKE_C_COMPILER=$1/bin/clang" "-DCMAKE_INSTALL_PREFIX=$1"
 ninja -C build -j16 install
+ninja -C build -j16 dpuExamples
 bash rvRunTests.sh "$1"

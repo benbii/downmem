@@ -17,21 +17,29 @@ SECTIONS {
       . = ALIGN(4);
   } > INSTRUCTION
 
-  .bss (NOLOAD) : {
+  .sbss (NOLOAD) : {
     __bss_start = .;
+    *(.sbss .sbss.*)
+    *(.sbss2 .sbss2.*)
+    *(COMMON)
+  } > SCRATCHPAD
+  .bss (NOLOAD) : {
     *(.bss .bss.*)
     *(COMMON)
-    
     /* Reserve space for per-thread stacks */
     . = ALIGN(16);
     __sys_stacks = .;
     . += 1024 * NR_TASKLETS;  /* 1024 bytes per thread stack */
     __sys_stacks_end = .;
-    
     __bss_end = .;
   } > SCRATCHPAD
 
   /* Initialized data in scratchpad */
+  .sdata : {
+    *(.sdata .sdata.*)
+    *(.sdata2 .sdata2.*)
+      . = ALIGN(4);
+  } > SCRATCHPAD
   .data : {
     *(.data .data.*)
     *(.rodata .rodata.*)

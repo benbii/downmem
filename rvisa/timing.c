@@ -1,19 +1,19 @@
-#include "downmem.h"
+#include "dmminternal.h"
 #include <stdio.h>
 
-static void servePipeline(DmmTiming *this) {
+static void servePipeline(RvTiming *this) {
   // If there's space in pipeline (i.e. not full) push the incoming instruction
   // The incoming instruction may not be set by scheduler and therefore
-  // (DmmInstr*)1
+  // (RvInstr*)1
   if (((this->PpQRear - this->PpQFrt) & 15) < NrPipelineStage - 1) {
     this->PpInsideInstrs[this->PpQRear] = this->PpInInstr;
     this->PpInsideIds[this->PpQRear] = this->PpInId;
     this->PpQRear = (this->PpQRear + 1) & 15;
-    this->PpInInstr = (DmmInstr *)1;
+    this->PpInInstr = (RvInstr *)1;
   }
   // If no instruction is ready, pop from the queue
   if (this->PpReadyInstr == NULL) {
-    DmmInstr *instr = this->PpInsideInstrs[this->PpQFrt];
+    RvInstr *instr = this->PpInsideInstrs[this->PpQFrt];
     long id = this->PpInsideIds[this->PpQFrt];
     this->PpQFrt = (this->PpQFrt + 1) & 15;
     this->PpReadyInstr = instr;
@@ -21,12 +21,12 @@ static void servePipeline(DmmTiming *this) {
   }
 }
 
-static void serveCycleRule(DmmTiming *this) {
+static void serveCycleRule(RvTiming *this) {
   if (this->CrCurInstr != NULL && this->CrPrevInstr == NULL) {
-    DmmInstr *instr = this->CrCurInstr;
+    RvInstr *instr = this->CrCurInstr;
     this->CrCurInstr = NULL;
     long thread_id = this->CrCurId;
-    DmmRvOpcode op = instr->Opcode;
+    RvOpcode op = instr->Opcode;
 
     // RISC-V cycle rules: simpler than UPMEM since no 64-bit register pairs
     // All RISC-V instructions read at most 2 registers (rs1, rs2)
@@ -52,7 +52,7 @@ static void serveCycleRule(DmmTiming *this) {
   }
 
   if (this->CrPrevInstr != NULL && this->CrExtraCycleLeft <= 0) {
-    DmmInstr *instr = this->CrPrevInstr;
+    RvInstr *instr = this->CrPrevInstr;
     this->CrPrevInstr = NULL;
     long thread_id = this->CrPrevId;
 
@@ -63,43 +63,43 @@ static void serveCycleRule(DmmTiming *this) {
   this->CrExtraCycleLeft -= 1;
 }
 
-void DmmTimingInit(DmmTiming *t, DmmInstr *iram, size_t memFreq,
+void RvTimingInit(RvTiming *t, RvInstr *iram, size_t memFreq,
                    size_t logicFreq) {
-  memset(t, 0, sizeof(DmmTiming));
+  memset(t, 0, sizeof(RvTiming));
   t->Iram = iram;
   for (long i = 0; i < MaxNumTasklets; i++) {
-    DmmTletInit(&t->Threads[i], i);
-    t->lastPc[i] = IramNrInstr - 1;
+    RvTletInit(&t->Threads[i], i);
+    t->lastPc[i] = IramNrInstrR - 1;
   }
   t->FreqRatio = (double)memFreq / (double)logicFreq;
   DmmMramTimingInit(&t->MramTiming);
 
   // Push dummy entries to simulate initial pipeline stages
   for (size_t i = 0; i < NrPipelineStage - 1; i++) {
-    t->PpInsideInstrs[i] = (DmmInstr *)1;
+    t->PpInsideInstrs[i] = (RvInstr *)1;
     t->PpInsideIds[i] = 0;
   }
   t->PpQFrt = 0;
   t->PpQRear = NrPipelineStage - 1;
-  t->PpInInstr = (DmmInstr *)1;
-  t->PpReadyInstr = (DmmInstr *)1;
+  t->PpInInstr = (RvInstr *)1;
+  t->PpReadyInstr = (RvInstr *)1;
 }
 
-DmmTlet *DmmTimingCycle(DmmTiming *this, size_t nrTasklets) {
+RvTlet *RvTimingCycle(RvTiming *this, size_t nrTasklets) {
   long num_memory_cycles =
       (long)(this->FreqRatio * (double)this->StatNrCycle -
              this->FreqRatio * (double)(this->StatNrCycle - 1));
   for (long i = 0; i < num_memory_cycles; i++)
     DmmMramTimingCycle(&this->MramTiming);
   this->StatNrCycle++;
-  DmmTlet *ret = NULL;
+  RvTlet *ret = NULL;
 
-  if (this->PpInInstr != (DmmInstr *)1 || this->CrCurInstr != NULL) {
+  if (this->PpInInstr != (RvInstr *)1 || this->CrCurInstr != NULL) {
     this->StatNrRfHazard += 1;
   } else {
     bool is_blocked = false;
     for (long i = 0; i < nrTasklets; i++) {
-      DmmTlet *thread = &this->Threads[this->lastIssue];
+      RvTlet *thread = &this->Threads[this->lastIssue];
       this->lastIssue++;
       if (this->lastIssue == nrTasklets) this->lastIssue = 0;
       if (this->lastRunAt[this->lastIssue] + NrRevolveCycle >
@@ -113,19 +113,19 @@ DmmTlet *DmmTimingCycle(DmmTiming *this, size_t nrTasklets) {
         is_blocked = true; continue;
       }
 
-      size_t pc = (thread->Pc - IramBegin) / InstrNrByte;
-      if (pc >= IramNrInstr)
+      size_t pc = (thread->Pc - IramBeginR) / InstrNrByteR;
+      if (pc >= IramNrInstrR)
         continue; // PC out of bounds
 
-      DmmInstr *instr = &this->Iram[pc];
+      RvInstr *instr = &this->Iram[pc];
       this->PpInInstr = instr;
       this->PpInId = thread->Id;
 
       // Handle RISC-V custom DMA instructions (LDMRAM, SDMRAM)
       if (instr->Opcode == LDMRAM || instr->Opcode == SDMRAM) {
         // Extract DMA parameters from registers
-        uint32_t wram_addr = thread->Regs[instr->rd] & WramMask;
-        uint32_t mram_addr = (thread->Regs[instr->rs1] - MramBegin) & MramMask;
+        uint32_t wram_addr = thread->Regs[instr->rd] & WramMaskR;
+        uint32_t mram_addr = (thread->Regs[instr->rs1] - MramBeginR) & MramMaskR;
         uint32_t size = thread->Regs[instr->rs2];
         if (size > 0) {
           // Push DMA request to MRAM timing simulator
@@ -136,15 +136,15 @@ DmmTlet *DmmTimingCycle(DmmTiming *this, size_t nrTasklets) {
       }
 
       // Handle MRAM load/store operations (reg = *mram_ptr constructs)
-      if (instr->Opcode == LB || instr->Opcode == LH || instr->Opcode == LW ||
-          instr->Opcode == LBU || instr->Opcode == LHU ||
-          instr->Opcode == SB || instr->Opcode == SH || instr->Opcode == SW) {
+      if (instr->Opcode == LBr || instr->Opcode == LHr || instr->Opcode == LWr ||
+          instr->Opcode == LBUr || instr->Opcode == LHUr ||
+          instr->Opcode == SBr || instr->Opcode == SHr || instr->Opcode == SWr) {
         // Calculate effective address: rs1 + immediate
         uint32_t addr = thread->Regs[instr->rs1] + instr->imm;
         // Check if address is in MRAM range
-        if (addr >= MramBegin && addr < MramBegin + MramSize) {
+        if (addr >= MramBeginR && addr < MramBeginR + MramSizeR) {
           // MRAM access detected - push 8-byte request regardless of actual size
-          uint32_t mram_addr = (addr - MramBegin) & MramMask;
+          uint32_t mram_addr = (addr - MramBeginR) & MramMaskR;
           DmmMramTimingPush(&this->MramTiming, mram_addr, 8, thread->Id);
           // Block thread until MRAM access completes
           this->Csr[31] |= (1 << thread->Id); // Set blocked bit
@@ -168,10 +168,10 @@ DmmTlet *DmmTimingCycle(DmmTiming *this, size_t nrTasklets) {
   }
 
   if (this->CrCurInstr == NULL) {
-    DmmInstr *instruction_ = this->PpReadyInstr;
+    RvInstr *instruction_ = this->PpReadyInstr;
     long id = this->PpReadyId;
     this->PpReadyInstr = NULL;
-    if (instruction_ != (DmmInstr *)1) {
+    if (instruction_ != (RvInstr *)1) {
       this->CrCurInstr = instruction_;
       this->CrCurId = id;
     }

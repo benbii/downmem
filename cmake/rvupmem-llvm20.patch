@@ -152,7 +152,7 @@ index 000000000000..d1dc4d2d8c37
 +  let isCodeGenOnly = 0;
 +}
 +
-+// SDMRAM - DMA store from scratchpad to main memory (using CUSTOM_3)
++// SDMRAM - DMA store from scratchpad to main memory (using CUSTOM_0)
 +def SDMRAM : SdmramInst<0b010, OPC_CUSTOM_0,
 +                        (outs GPR:$wramAddr), (ins GPR:$mramAddr, GPR:$size),
 +                        "sdmram", "$wramAddr, $mramAddr, $size"> {

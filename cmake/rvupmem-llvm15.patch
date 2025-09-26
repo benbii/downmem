@@ -1,0 +1,212 @@
+From 939c5649ffeddca9b747c1c7672b11bd9f899ca4 Mon Sep 17 00:00:00 2001
+From: benbii <alittlesheep777@gmail.com>
+Date: Thu, 25 Sep 2025 22:20:19 +0800
+Subject: [PATCH] Hypothetical RISCV on top of UPMEM ISA
+
+---
+ clang/lib/Driver/ToolChains/BareMetal.cpp     | 22 ++++++++-
+ .../llvm/Support/RISCVTargetParser.def        |  1 +
+ llvm/lib/Target/RISCV/RISCV.td                |  2 +
+ llvm/lib/Target/RISCV/RISCVInstrFormats.td    | 49 +++++++++++++++++++
+ llvm/lib/Target/RISCV/RISCVInstrInfo.td       |  6 +++
+ llvm/lib/Target/RISCV/RISCVInstrInfoCustom.td | 46 +++++++++++++++++
+ 6 files changed, 125 insertions(+), 1 deletion(-)
+ create mode 100644 llvm/lib/Target/RISCV/RISCVInstrInfoCustom.td
+
+diff --git a/clang/lib/Driver/ToolChains/BareMetal.cpp b/clang/lib/Driver/ToolChains/BareMetal.cpp
+index 5f1638a159d5..1924ada603c5 100644
+--- a/clang/lib/Driver/ToolChains/BareMetal.cpp
++++ b/clang/lib/Driver/ToolChains/BareMetal.cpp
+@@ -322,13 +322,33 @@ void baremetal::Linker::ConstructJob(Compilation &C, const JobAction &JA,
+ 
+   TC.AddFilePathLibArgs(Args, CmdArgs);
+ 
++  // UMM processor support
++  if (Arg *a = Args.getLastArg(options::OPT_mcpu_EQ); a != NULL &&
++      StringRef(a->getValue()) == "umm" && !Args.hasArg(options::OPT_nostdlib)) {
++    CmdArgs.push_back("-T");
++    CmdArgs.push_back(Args.MakeArgString(TC.GetFilePath("device.ld")));
++
++    // Add crt0.o startup file
++    if (!Args.hasArg(options::OPT_nostartfiles)) {
++      CmdArgs.push_back(Args.MakeArgString(TC.GetFilePath("crt0.o")));
++    }
++
++    // Add NR_TASKLETS linker symbol
++    StringRef NRTasklets = "1";
++    for (const Arg *DefineArg : Args.filtered(options::OPT_D)) {
++      StringRef DefineStr = DefineArg->getValue();
++      if (DefineStr.startswith("NR_TASKLETS="))
++        NRTasklets = DefineStr.substr(12);
++    }
++    CmdArgs.push_back(Args.MakeArgString("--defsym=NR_TASKLETS=" + NRTasklets));
++  }
++
+   CmdArgs.push_back(Args.MakeArgString("-L" + TC.getRuntimesDir()));
+ 
+   if (TC.ShouldLinkCXXStdlib(Args))
+     TC.AddCXXStdlibLibArgs(Args, CmdArgs);
+   if (!Args.hasArg(options::OPT_nostdlib, options::OPT_nodefaultlibs)) {
+     CmdArgs.push_back("-lc");
+-    CmdArgs.push_back("-lm");
+ 
+     TC.AddLinkRuntimeLib(Args, CmdArgs);
+   }
+diff --git a/llvm/include/llvm/Support/RISCVTargetParser.def b/llvm/include/llvm/Support/RISCVTargetParser.def
+index f658cdb91c6b..14dc2d9a61ac 100644
+--- a/llvm/include/llvm/Support/RISCVTargetParser.def
++++ b/llvm/include/llvm/Support/RISCVTargetParser.def
+@@ -31,5 +31,6 @@ PROC(SIFIVE_S54, {"sifive-s54"}, FK_64BIT, {"rv64gc"})
+ PROC(SIFIVE_S76, {"sifive-s76"}, FK_64BIT, {"rv64gc"})
+ PROC(SIFIVE_U54, {"sifive-u54"}, FK_64BIT, {"rv64gc"})
+ PROC(SIFIVE_U74, {"sifive-u74"}, FK_64BIT, {"rv64gc"})
++PROC(UMM, {"umm"}, FK_NONE, {"rv32im_zbb"})
+ 
+ #undef PROC
+diff --git a/llvm/lib/Target/RISCV/RISCV.td b/llvm/lib/Target/RISCV/RISCV.td
+index 8a6f69c7f7ca..adcbc04de0cb 100644
+--- a/llvm/lib/Target/RISCV/RISCV.td
++++ b/llvm/lib/Target/RISCV/RISCV.td
+@@ -584,6 +584,8 @@ def : ProcessorModel<"sifive-u74", SiFive7Model, [Feature64Bit,
+                                                   FeatureStdExtC],
+                      [TuneSiFive7]>;
+ 
++def : ProcessorModel<"umm", NoSchedModel, [FeatureStdExtM, FeatureStdExtZbb]>;
++
+ //===----------------------------------------------------------------------===//
+ // Define the RISC-V target.
+ //===----------------------------------------------------------------------===//
+diff --git a/llvm/lib/Target/RISCV/RISCVInstrFormats.td b/llvm/lib/Target/RISCV/RISCVInstrFormats.td
+index 18b31f85bfdb..85c70466ab08 100644
+--- a/llvm/lib/Target/RISCV/RISCVInstrFormats.td
++++ b/llvm/lib/Target/RISCV/RISCVInstrFormats.td
+@@ -146,6 +146,9 @@ def OPC_JALR      : RISCVOpcode<"JALR",      0b1100111>;
+ def OPC_JAL       : RISCVOpcode<"JAL",       0b1101111>;
+ def OPC_SYSTEM    : RISCVOpcode<"SYSTEM",    0b1110011>;
+ 
++// Custom opcodes for UMM processor
++def OPC_CUSTOM_0  : RISCVOpcode<"CUSTOM_0",  0b0001011>;
++
+ class RVInst<dag outs, dag ins, string opcodestr, string argstr,
+              list<dag> pattern, InstFormat format>
+     : Instruction {
+@@ -566,3 +569,49 @@ class DirectiveInsnJ<dag outs, dag ins, string argstr>
+ 
+   let AsmString = ".insn j " # argstr;
+ }
++
++//===----------------------------------------------------------------------===//
++// Custom Hardware Instructions
++//===----------------------------------------------------------------------===//
++
++// MYID instruction - R-format with no operands except rd
++class MyIdInst<bits<7> funct7, bits<3> funct3, RISCVOpcode opcode, dag outs,
++               dag ins, string opcodestr, string argstr>
++    : RVInstR<funct7, funct3, opcode, outs, ins, opcodestr, argstr> {
++  let rs1 = 0b00000;  // Fixed rs1 = 0
++  let rs2 = 0b00000;  // Fixed rs2 = 0
++}
++
++// LDMRAM instruction - Custom format with three register operands (wramAddr, mramAddr, size)
++class LdmramInst<bits<3> funct3, RISCVOpcode opcode, dag outs, dag ins,
++                 string opcodestr, string argstr>
++    : RVInst<outs, ins, opcodestr, argstr, [], InstFormatOther> {
++  bits<5> wramAddr;
++  bits<5> mramAddr;
++  bits<5> size;
++
++  let Inst{31-27} = 0b00000;  // Custom funct5
++  let Inst{26-22} = size;     // size register
++  let Inst{21-20} = 0b00;     // padding
++  let Inst{19-15} = wramAddr; // wramAddr
++  let Inst{14-12} = funct3;
++  let Inst{11-7} = mramAddr;  // mramAddr
++  let Inst{6-0} = opcode.Value;
++}
++
++// SDMRAM instruction - Custom format with three register operands (wramAddr, mramAddr, size)
++class SdmramInst<bits<3> funct3, RISCVOpcode opcode, dag outs, dag ins,
++                 string opcodestr, string argstr>
++    : RVInst<outs, ins, opcodestr, argstr, [], InstFormatOther> {
++  bits<5> wramAddr;
++  bits<5> mramAddr;
++  bits<5> size;
++
++  let Inst{31-27} = 0b00001;  // Custom funct5, different from LDMRAM
++  let Inst{26-22} = size;     // size register
++  let Inst{21-20} = 0b00;     // padding
++  let Inst{19-15} = wramAddr; // wramAddr
++  let Inst{14-12} = funct3;
++  let Inst{11-7} = mramAddr;  // mramAddr
++  let Inst{6-0} = opcode.Value;
++}
+diff --git a/llvm/lib/Target/RISCV/RISCVInstrInfo.td b/llvm/lib/Target/RISCV/RISCVInstrInfo.td
+index 78fd09fbf387..eb1518bce1d8 100644
+--- a/llvm/lib/Target/RISCV/RISCVInstrInfo.td
++++ b/llvm/lib/Target/RISCV/RISCVInstrInfo.td
+@@ -1686,3 +1686,9 @@ include "RISCVInstrInfoZk.td"
+ include "RISCVInstrInfoV.td"
+ include "RISCVInstrInfoZfh.td"
+ include "RISCVInstrInfoZicbo.td"
++
++//===----------------------------------------------------------------------===//
++// Custom Hardware Instructions
++//===----------------------------------------------------------------------===//
++
++include "RISCVInstrInfoCustom.td"
+diff --git a/llvm/lib/Target/RISCV/RISCVInstrInfoCustom.td b/llvm/lib/Target/RISCV/RISCVInstrInfoCustom.td
+new file mode 100644
+index 000000000000..3dcfdb17aaa2
+--- /dev/null
++++ b/llvm/lib/Target/RISCV/RISCVInstrInfoCustom.td
+@@ -0,0 +1,46 @@
++//===-- RISCVInstrInfoCustom.td - Custom Hardware Instructions -*- tablegen -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// This file describes custom hardware instructions for the hypothetical
++// multi-threaded RISC-V processor.
++//
++//===----------------------------------------------------------------------===//
++
++//===----------------------------------------------------------------------===//
++// Custom Hardware Instructions
++//===----------------------------------------------------------------------===//
++
++// MYID - Get hardware thread ID
++def MYID : MyIdInst<0b0000000, 0b000, OPC_CUSTOM_0,
++                    (outs GPR:$rd), (ins),
++                    "myid", "$rd"> {
++  let hasSideEffects = 0;
++  let mayLoad = 0;
++  let mayStore = 0;
++  let isCodeGenOnly = 0;
++}
++
++// LDMRAM - DMA load from main memory to scratchpad
++def LDMRAM : LdmramInst<0b001, OPC_CUSTOM_0,
++                        (outs GPR:$wramAddr), (ins GPR:$mramAddr, GPR:$size),
++                        "ldmram", "$wramAddr, $mramAddr, $size"> {
++  let hasSideEffects = 1;  // Has side effects (DMA operation)
++  let mayLoad = 1;         // Loads from memory
++  let mayStore = 1;        // Stores to scratchpad
++  let isCodeGenOnly = 0;
++}
++
++// SDMRAM - DMA store from scratchpad to main memory (using CUSTOM_0)
++def SDMRAM : SdmramInst<0b010, OPC_CUSTOM_0,
++                        (outs GPR:$wramAddr), (ins GPR:$mramAddr, GPR:$size),
++                        "sdmram", "$wramAddr, $mramAddr, $size"> {
++  let hasSideEffects = 1;  // Has side effects (DMA operation)
++  let mayLoad = 1;         // Loads from scratchpad
++  let mayStore = 1;        // Stores to memory
++  let isCodeGenOnly = 0;
++}
+\ No newline at end of file
+-- 
+2.51.0
+

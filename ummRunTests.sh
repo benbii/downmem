@@ -28,33 +28,13 @@ time build/dmmTS 327680 320 build/devApp/objdumps/TS.objdump
 time build/dmmUNI 100000 256 build/devApp/objdumps/UNI.objdump
 time build/dmmVA 5242880 2560 build/devApp/objdumps/VA.objdump
 
-time build/dmmBS 5242880 640 build/devApp/rvbins/BS
-time build/dmmCOMPACT 5242880 2560 build/devApp/rvbins/COMPACT
-time build/dmmHST 2621440 1280 build/devApp/rvbins/HST
-time build/dmmGEMV 8192 2048 build/devApp/rvbins/GEMV
-time build/dmmMLP 1024 1024 build/devApp/rvbins/MLP
-time build/dmmNW 1500 1000 64 build/devApp/rvbins/NW
-time build/dmmOPDEMO 131072 256 build/devApp/rvbins/OPDEMO 3
-time build/dmmOPDEMOF 131072 256 build/devApp/rvbins/OPDEMOF 3
-time build/dmmRED 5246800 1600 build/devApp/rvbins/RED
-time build/dmmSCAN 3276800 1600 build/devApp/rvbins/SCAN
-time build/dmmSPMV 9999 666 build/devApp/rvbins/SPMV
-time build/dmmTRNS 2000 200 build/devApp/rvbins/TRNS
-time build/dmmTS 327680 320 build/devApp/rvbins/TS
-time build/dmmUNI 100000 256 build/devApp/rvbins/UNI
-time build/dmmVA 5242880 2560 build/devApp/rvbins/VA
-
 if ! [ -f hostApp/BFS/csr.txt ]; then
   wget -O hostApp/BFS/csr.txt.zst \
     "https://drive.usercontent.google.com/download?id=1bXYWq_4dXrJcst5jsLL3CJTeZTQCrBlr&export=download"
   zstd -d hostApp/BFS/csr.txt.zst
 fi
+time build/dmmBFS simpleBFSDpu 0 hostApp/BFS/csr.txt /tmp/dmmBfsDOut build/devApp/objdumps/BFS.objdump 192 
 build/dmmBFS simpleBFSCpu 0 hostApp/BFS/csr.txt /tmp/dmmBfsCOut >/dev/null
-
-time build/dmmBFS simpleBFSDpu 0 hostApp/BFS/csr.txt /tmp/dmmBfsDOut \
-  build/devApp/objdumps/BFS.objdump 192 
-diff /tmp/dmmBfs{C,D}Out # Check the output is indeed correct here.
-time build/dmmBFS simpleBFSDpu 0 hostApp/BFS/csr.txt /tmp/dmmBfsDOut \
-  build/devApp/rvbins/BFS 192
-diff /tmp/dmmBfs{C,D}Out # Another check for umm rv
+# Check the output is indeed correct here.
+diff /tmp/dmmBfs{C,D}Out
 rm /tmp/dmmBfs{C,D}Out

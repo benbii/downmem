@@ -92,26 +92,15 @@ void DmmMramTimingFini(DmmMramTiming* mt) {
   _slicefree(&mt->ScheReadyQ);
 }
 
-static long _wordline_addr(long address) {
-  return address / WordlineSz * WordlineSz;
-}
-
 void DmmMramTimingPush(DmmMramTiming *mt, long begin_addr, long size,
                        long thrd_id) {
   long end_addr = begin_addr + size;
   long ack_nr = 0;
 
-  for (long address = begin_addr; address < end_addr; ) {
-    long wordline_addr = _wordline_addr(address);
-    long sz = MIN(MIN(address + 8, wordline_addr + WordlineSz),
-                  end_addr) - address;
-
-    _memcmd memory_command;
-    memory_command.address = address;
-    memory_command.thrd_id = thrd_id;
-
+  for (long address = begin_addr & ~7l; address < end_addr; address += 8) {
+    _memcmd memory_command = {
+      .address = address / WordlineSz * WordlineSz, .thrd_id = thrd_id};
     _push(&mt->ScheRob, memory_command);
-    address += sz;
     ack_nr++;
   }
 
@@ -124,7 +113,7 @@ static void _serveMramSched(DmmMramTiming* mt) {
   if (mt->ScheRowAddr != noAddr) {
     for (long i = 0; _sz(&mt->ScheRob) >= i + 1 && i < ReorderWinSz; i++) {
       _memcmd memory_command = _get(&mt->ScheRob, i);
-      if (_wordline_addr(memory_command.address) == mt->ScheRowAddr) {
+      if (memory_command.address == mt->ScheRowAddr) {
         _rm(&mt->ScheRob, i);
         _push(&mt->ScheReadyQ, memory_command);
         mt->StatNrFr++;
@@ -136,7 +125,7 @@ static void _serveMramSched(DmmMramTiming* mt) {
   if (_sz(&mt->ScheRob) >= 1) {
     _memcmd memcmd = _get(&mt->ScheRob, 0);
     _popfront(&mt->ScheRob);
-    long wordline_addr = _wordline_addr(memcmd.address);
+    long wordline_addr = memcmd.address;
     _push(&mt->ScheReadyQ, memcmd);
     mt->ScheRowAddr = wordline_addr;
     mt->StatNrFcfs++;
@@ -146,7 +135,7 @@ static void _serveMramSched(DmmMramTiming* mt) {
 static void _serveRowBuf(DmmMramTiming* mt) {
   if (mt->RowbufInSlot.address != noAddr) {
     _memcmd memory_command = mt->RowbufInSlot;
-    long line_addr = memory_command.address / WordlineSz * WordlineSz;
+    long line_addr = memory_command.address;
 
     if (line_addr == mt->RowbufAddr) {
       if (mt->RowbufPrechSince > TRp + 1 + TRcd &&
