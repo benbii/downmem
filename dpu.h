@@ -154,9 +154,11 @@ dpu_get_nr_dpus(struct dpu_set_t dpu_set, uint32_t *nr_ranks) {
   _CONCAT(_DPU_FOREACH_, _DPU_FOREACH_VARIANT(set, ##__VA_ARGS__))             \
   (set, ##__VA_ARGS__)
 #define _DPU_FOREACH_X(set, one)                                               \
-  for (one = set; one.begin < set.end; ++one.begin)
+  for (one = set, one.end = one.begin + 1; one.begin < set.end;                \
+       ++one.begin, ++one.end)
 #define _DPU_FOREACH_I(set, one, i)                                            \
-  for (one = set, i = 0; one.begin < one.end; ++one.begin, ++i)
+  for (one = set, one.end = one.begin + 1, i = 0; one.begin < set.end;         \
+       ++one.begin, ++one.end, ++i)
 
 /**
  * @brief Load a program in all the DPUs of a DPU set.

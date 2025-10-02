@@ -120,6 +120,16 @@ typedef enum dpu_error_t {
  */
 char *dpu_error_to_string(dpu_error_t status);
 
+#define DMM_ONERROR(statement, on_error)                                     \
+do {                                                                         \
+  dpu_error_t __error = (statement);                                         \
+  if (__error != DPU_OK) {                                                   \
+    fprintf(stderr, "%s:%d(%s): DMM DPU Error (%s)\n", __FILE__, __LINE__,   \
+            __func__, dpu_error_to_string(__error));                         \
+    on_error;                                                                \
+  }                                                                          \
+} while (0)
+
 #ifdef NDEBUG
 /** @brief Error management for DPU api functions disabled on release mode */
 #define DPU_CHECK(statement, on_error) (void)statement
@@ -129,15 +139,7 @@ char *dpu_error_to_string(dpu_error_t status);
  * @param statement the call to the DPU api to execute and check
  * @param on_error the statement to execute in case of an error in the DPU api call
  * @hideinitializer */
-#define DPU_CHECK(statement, on_error)                                         \
-do {                                                                         \
-  dpu_error_t __error = (statement);                                         \
-  if (__error != DPU_OK) {                                                   \
-    fprintf(stderr, "%s:%d(%s): DPU Error (%s)\n", __FILE__, __LINE__,       \
-            __func__, dpu_error_to_string(__error));                         \
-    on_error;                                                                \
-  }                                                                          \
-} while (0)
+#define DPU_CHECK DMM_ONERROR
 #endif
 
 /**
@@ -145,4 +147,5 @@ do {                                                                         \
  * @param statement the call to the DPU api to execute and check
  * @hideinitializer */
 #define DPU_ASSERT(statement) DPU_CHECK(statement, exit(EXIT_FAILURE))
+#define DMM_VERIFY(statement) DMM_ONERROR(statement, exit(EXIT_FAILURE))
 

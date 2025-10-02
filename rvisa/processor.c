@@ -11,8 +11,8 @@ void RvTletInit(RvTlet* thread, uint8_t i) {
     thread->Regs[reg] = 0;
 }
 
-void RvDpuInit(RvDpu* d, size_t memFreq, size_t logicFreq) {
-  RvPrgInit(&d->Program);
+void RvDpuInit(RvDpu* d, size_t memFreq, size_t logicFreq, int numaNode) {
+  RvPrgInit(&d->Program, numaNode);
   RvTimingInit(&d->Timing, d->Program.Iram, memFreq, logicFreq);
   // CSR is now initialized in RvTimingInit
 }

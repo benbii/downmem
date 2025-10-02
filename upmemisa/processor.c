@@ -31,8 +31,8 @@ void UmmTletInit(UmmTlet* thread, uint8_t i) {
   thread->Regs[NumGpRegisters + 7] = (uint32_t)i << 3;
 }
 
-void UmmDpuInit(UmmDpu* d, size_t memFreq, size_t logicFreq) {
-  UmmPrgInit(&d->Program);
+void UmmDpuInit(UmmDpu* d, size_t memFreq, size_t logicFreq, int numaNode) {
+  UmmPrgInit(&d->Program, numaNode);
   UmmTimingInit(&d->Timing, d->Program.Iram, memFreq, logicFreq);
 }
 

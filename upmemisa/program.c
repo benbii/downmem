@@ -6,6 +6,10 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#ifdef __DMM_NUMA
+#include <numa.h>
+#include <numaif.h>
+#endif
 
 // Regex compiled patterns
 static pcre2_code *instrRe, *symRe, *dataRe;
@@ -32,23 +36,29 @@ static void __attribute__((constructor)) regex_init() {
   dataMat = pcre2_match_data_create_from_pattern(dataRe, NULL);
 }
 
-void UmmPrgInit(UmmPrg* p) {
-  // coreId = numa_node_of_cpu(coreId);
+void UmmPrgInit(UmmPrg* p, int numaNode) {
   p->WMAram = mmap(NULL, WMAINrByte, PROT_READ | PROT_WRITE,
                    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   if (p->WMAram == MAP_FAILED) {
     perror("mmap");
     exit(EXIT_FAILURE);
   }
+  p->Iram = (UmmInstr*)(p->WMAram + WramSize + MramSize + AtomicSize);
+
   if (madvise(p->WMAram, WMAINrByte, MADV_HUGEPAGE) != 0)
     perror("madvise");
-  p->Iram = (UmmInstr*)(p->WMAram + WramSize + MramSize + AtomicSize);
-  // if (coreId >= 0) {
-  //   coreId = 1 << coreId;
-  //   if (0 != mbind(p->WMAram, WramSize + MramSize + AtomicSize, MPOL_BIND,
-  //                  &coreId, sizeof(coreId), 0))
-  //     perror("mbind");
-  // }
+#ifdef __DMM_NUMA
+  // Bind WMAram to specified NUMA node
+  if (numaNode >= 0) {
+    struct bitmask *mask = numa_allocate_nodemask();
+    numa_bitmask_setbit(mask, numaNode);
+    long ret = mbind(p->WMAram, WMAINrByte, MPOL_BIND,
+                     mask->maskp, mask->size + 1, MPOL_MF_MOVE | MPOL_MF_STRICT);
+    if (ret != 0)
+      perror("mbind UmmPrg WMAram");
+    numa_free_nodemask(mask);
+  }
+#endif
 }
 void UmmPrgFini(UmmPrg* p) {
   if (p->WMAram != NULL)
@@ -401,7 +411,7 @@ size_t UmmPrgLoadBinary(UmmPrg *p, const char *filename, DmmMap symbols,
     }
   rewind(scanner);
 
-  UmmPrgInit(p);
+  UmmPrgInit(p, -1);
   size_t iramAt = 0;
   if (paged != NULL)
     memset(paged, 0, WMAINrPage);

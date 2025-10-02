@@ -15,7 +15,6 @@
 #include <unistd.h>
 
 static size_t nrCore;
-static size_t nrXferCore;
 static size_t dmmDpuSize;
 static size_t logicFreq;
 static size_t memFreq;
@@ -33,6 +32,25 @@ dpu_error_t dpu_alloc(uint32_t nrDpu, const char *_, struct dpu_set_t *set) {
   if (set->dmm_dpu == MAP_FAILED) return DPU_ERR_ALLOCATION;
   if (madvise(set->dmm_dpu, dmmDpuSize * nrDpu, MADV_NOHUGEPAGE) != 0)
     perror("madvise");
+
+#ifdef __DMM_NUMA
+  // Bind each DmmDpu structure to the NUMA node of its assigned CPU core
+  struct bitmask *mask = numa_allocate_nodemask();
+  for (size_t i = 0; i < nrDpu; ++i) {
+    size_t coreId = i % nrCore;
+    int numaNode = numa_node_of_cpu(coreId);
+    if (numaNode >= 0) {
+      numa_bitmask_clearall(mask);
+      numa_bitmask_setbit(mask, numaNode);
+      long ret = mbind(_dptr(i, *set), dmmDpuSize, MPOL_BIND,
+                       mask->maskp, mask->size + 1, MPOL_MF_MOVE | MPOL_MF_STRICT);
+      if (ret != 0)
+        perror("mbind DmmDpu");
+    }
+  }
+  numa_free_nodemask(mask);
+#endif
+
   set->symbols = DmmMapInit(512);
   set->xfer_addr = calloc(nrDpu, sizeof(intptr_t));
   if (set->symbols == NULL || set->xfer_addr == NULL) {
@@ -138,23 +156,26 @@ dpu_error_t dpu_load(struct dpu_set_t set, const char *objdmpPath, void **_) {
     prgWma = rprg.WMAram;
   }
 
-  #pragma omp parallel num_threads(nrXferCore)
+  #pragma omp parallel num_threads(nrCore)
   {
     size_t dpuId = omp_get_thread_num();
 #ifdef __DMM_NUMA
-    // the n-th OMP thread binds to the n-th CPU core and processes the
-    // n, n+nrCore, ... DPU
     cpu_set_t cpuset; CPU_ZERO(&cpuset); CPU_SET(dpuId, &cpuset);
     if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0)
       perror("sched_setaffinity");
 #endif
-
     while (dpuId < set.begin)
       dpuId += nrCore;
     while (dpuId < set.end) {
       DmmDpu *dpu = _dptr(dpuId, set);
+      size_t coreId = dpuId % nrCore;
+#ifdef __DMM_NUMA
+      int numaNode = numa_node_of_cpu(coreId);
+#else
+      int numaNode = -1;
+#endif
       if (prgWma == rprg.WMAram) {
-        RvDpuInit(&dpu->R, memFreq, logicFreq);
+        RvDpuInit(&dpu->R, memFreq, logicFreq, numaNode);
         dpu->Is = RV_DPUIS;
         uint8_t *dpuWma = dpu->R.Program.WMAram;
         for (size_t i = 0; i < WMAINrPageR; ++i)
@@ -163,7 +184,7 @@ dpu_error_t dpu_load(struct dpu_set_t set, const char *objdmpPath, void **_) {
         for (size_t i = 0; i < nrInstr; ++i)
           dpu->R.Program.Iram[i] = rprg.Iram[i];
       } else {
-        UmmDpuInit(&dpu->U, memFreq, logicFreq);
+        UmmDpuInit(&dpu->U, memFreq, logicFreq, numaNode);
         dpu->Is = UMM_DPUIS;
         uint8_t *dpuWma = dpu->U.Program.WMAram;
         for (size_t i = 0; i < WMAINrPage; ++i)
@@ -172,7 +193,7 @@ dpu_error_t dpu_load(struct dpu_set_t set, const char *objdmpPath, void **_) {
         for (size_t i = 0; i < nrInstr; ++i)
           dpu->U.Program.Iram[i] = uprg.Iram[i];
       }
-      dpuId += nrXferCore;
+      dpuId += nrCore;
     }
   }
 
@@ -255,7 +276,7 @@ dpu_push_xfer(struct dpu_set_t set, dpu_xfer_t xfer, const char *symName,
     return DPU_OK;
   }
 
-  #pragma omp parallel num_threads(nrXferCore)
+  #pragma omp parallel num_threads(nrCore)
   {
     size_t dpuId = omp_get_thread_num();
 #ifdef __DMM_NUMA
@@ -263,7 +284,6 @@ dpu_push_xfer(struct dpu_set_t set, dpu_xfer_t xfer, const char *symName,
     if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0)
       perror("sched_setaffinity");
 #endif
-
     while (dpuId < set.begin)
       dpuId += nrCore;
     while (dpuId < set.end) {
@@ -278,7 +298,7 @@ dpu_push_xfer(struct dpu_set_t set, dpu_xfer_t xfer, const char *symName,
         if (!(flag & DPU_XFER_NO_RESET))
           set.xfer_addr[dpuId] = NULL;
       }
-      dpuId += nrXferCore;
+      dpuId += nrCore;
     }
   }
   return DPU_OK;
@@ -342,7 +362,7 @@ dpu_broadcast_to(struct dpu_set_t set, const char *symName, uint32_t symOff,
     return ret;
   }
 
-  #pragma omp parallel num_threads(nrXferCore)
+  #pragma omp parallel num_threads(nrCore)
   {
     size_t dpuId = omp_get_thread_num();
 #ifdef __DMM_NUMA
@@ -350,7 +370,6 @@ dpu_broadcast_to(struct dpu_set_t set, const char *symName, uint32_t symOff,
     if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0)
       perror("sched_setaffinity");
 #endif
-
     while (dpuId < set.begin)
       dpuId += nrCore;
     while (dpuId < set.end) {
@@ -362,7 +381,7 @@ dpu_broadcast_to(struct dpu_set_t set, const char *symName, uint32_t symOff,
       memcpy(&dpuWma[dAddr], src, length);
       if (!(flags & DPU_XFER_NO_RESET))
         set.xfer_addr[dpuId] = NULL;
-      dpuId += nrXferCore;
+      dpuId += nrCore;
     }
   }
   return DPU_OK;
@@ -399,16 +418,14 @@ char *dpu_error_to_string(dpu_error_t status) {
   bool a = status & DPU_ERR_ASYNC_JOBS;
   status &= ~DPU_ERR_ASYNC_JOBS;
   ++status;
-  if (status >= 0x2b) status = 0x2b;
-  char *ret = strdup(errs[status] + (a ? 2 : 0));
+  if (status >= 0x2b) status = 0;
+  char *ret = strdup(errs[status] + (a ? 0 : 2));
   return ret;
 }
 
 static void __attribute__((constructor)) a() {
   const char* e = getenv("DMM_NR_SIM_THRDS");
   if (e != NULL) nrCore = strtoul(e, NULL, 0);
-  e = getenv("DMM_NR_XFER_THRDS");
-  if (e != NULL) nrXferCore = strtoul(e, NULL, 0);
   e = getenv("DMM_LogicFrequency");
   if (e != NULL) logicFreq = strtoul(e, NULL, 0);
   e = getenv("DMM_MemoryFrequency");
@@ -417,7 +434,6 @@ static void __attribute__((constructor)) a() {
   if (e != NULL) dumpFile = strdup(e);
 
   if (nrCore <= 0 || nrCore > 512) nrCore = sysconf(_SC_NPROCESSORS_ONLN);
-  if (nrXferCore <= 0 || nrXferCore > 512) nrXferCore = 8;
   if (logicFreq <= 0) logicFreq = 350;
   if (memFreq <= 0) memFreq = 2400;
 

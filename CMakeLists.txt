@@ -4,6 +4,7 @@ project(downmem LANGUAGES C)
 option(DMM_MRAMXFER "Select the mram simulation variant" "interleaveLut")
 option(DMM_UPMEM "upmem" ON)
 option(DMM_RV "hypothetical riscv upmem" ON)
+option(DMM_NUMA "Enable NUMA-aware memory allocation and thread binding" OFF)
 
 find_package(OpenMP REQUIRED)
 find_package(PkgConfig REQUIRED)
@@ -33,8 +34,16 @@ target_include_directories(dmmShared INTERFACE
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}> $<INSTALL_INTERFACE:include>)
 target_link_libraries(dmmShared PUBLIC OpenMP::OpenMP_C ${PCRE2_LIBRARIES} elf)
 target_compile_options(dmmShared PRIVATE -mlzcnt -mpopcnt -mbmi -mbmi2)
-install(FILES rvisa/dmminternal.h upmemisa/dmminternal.h 
-        dpu.h dpu_error.h dmm_common.h downmem.h 
+
+if(DMM_NUMA)
+  target_compile_definitions(dmm PUBLIC __DMM_NUMA)
+  target_compile_definitions(dmmShared PUBLIC __DMM_NUMA)
+  target_link_libraries(dmm PUBLIC numa)
+  target_link_libraries(dmmShared PUBLIC numa)
+endif()
+
+install(FILES rvisa/dmminternal.h upmemisa/dmminternal.h
+        dpu.h dpu_error.h dmm_common.h downmem.h
         DESTINATION include)
 
 if(DMM_MRAMXFER STREQUAL "analytical")

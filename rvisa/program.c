@@ -8,6 +8,10 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
+#ifdef __DMM_NUMA
+#include <numa.h>
+#include <numaif.h>
+#endif
 #include <libelf.h>
 #include <gelf.h>
 
@@ -282,16 +286,30 @@ die:
   exit(fprintf(stderr, "Unknown instr %x\n", encoded));
 }
 
-void RvPrgInit(RvPrg* p) {
+void RvPrgInit(RvPrg* p, int numaNode) {
   p->WMAram = mmap(NULL, WMAINrByteR, PROT_READ | PROT_WRITE,
                   MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   if (p->WMAram == MAP_FAILED) {
     perror("mmap");
     exit(EXIT_FAILURE);
   }
+  p->Iram = (RvInstr*)(p->WMAram + WramSizeR + MramSizeR);
+
   if (madvise(p->WMAram, WMAINrByteR, MADV_HUGEPAGE) != 0)
     perror("madvise");
-  p->Iram = (RvInstr*)(p->WMAram + WramSizeR + MramSizeR);
+  (void)numaNode;
+#ifdef __DMM_NUMA
+  // Bind WMAram to specified NUMA node
+  if (numaNode >= 0) {
+    struct bitmask *mask = numa_allocate_nodemask();
+    numa_bitmask_setbit(mask, numaNode);
+    long ret = mbind(p->WMAram, WMAINrByteR, MPOL_BIND,
+                     mask->maskp, mask->size + 1, MPOL_MF_MOVE | MPOL_MF_STRICT);
+    if (ret != 0)
+      perror("mbind RvPrg WMAram");
+    numa_free_nodemask(mask);
+  }
+#endif
 }
 void RvPrgFini(RvPrg* p) {
   if (p->WMAram != NULL)
@@ -324,7 +342,7 @@ size_t RvPrgLoadBinary(RvPrg *p, const char *filename, DmmMap symbols,
     fprintf(stderr, "elf_getshdrstrndx failed: %s\n", elf_errmsg(-1));
     goto die;
   }
-  RvPrgInit(p);
+  RvPrgInit(p, -1);
 
   while ((scn = elf_nextscn(elf, scn)) != NULL) {
     GElf_Shdr shdr;

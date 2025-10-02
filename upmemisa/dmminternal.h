@@ -99,7 +99,7 @@ enum {
   WMAINrPage = (_WMAINrByte + 4095) / 4096,
   WMAINrByte = WMAINrPage * 4096
 };
-void UmmPrgInit(UmmPrg* p);
+void UmmPrgInit(UmmPrg* p, int numaNode);
 void UmmPrgFini(UmmPrg* p);
 size_t UmmPrgLoadBinary(UmmPrg *p, const char *filename, DmmMap symbols,
                          bool paged[WMAINrPage]);
@@ -168,7 +168,7 @@ typedef struct UmmDpu {
   UmmPrg Program;
   UmmTiming Timing;
 } UmmDpu;
-void UmmDpuInit(UmmDpu* d, size_t memFreq, size_t logicFreq);
+void UmmDpuInit(UmmDpu* d, size_t memFreq, size_t logicFreq, int numaNode);
 void UmmDpuRun(UmmDpu* d, size_t nrTasklets);
 void UmmDpuExecuteInstr(UmmDpu* d, UmmTlet* thread);
 static inline void UmmDpuFini(UmmDpu* d) {

@@ -73,7 +73,7 @@ enum {
   WMAINrPageR = (_WMAINrByteR + 4095) / 4096,
   WMAINrByteR = WMAINrPageR * 4096
 };
-void RvPrgInit(RvPrg* p);
+void RvPrgInit(RvPrg* p, int numaNode);
 void RvPrgFini(RvPrg* p);
 // Binary instruction loading instead of objdump parsing
 size_t RvPrgLoadBinary(RvPrg *p, const char *filename, DmmMap symbols,
@@ -141,7 +141,7 @@ typedef struct RvDpu {
   RvTiming Timing;
 } RvDpu;
 
-void RvDpuInit(RvDpu* d, size_t memFreq, size_t logicFreq);
+void RvDpuInit(RvDpu* d, size_t memFreq, size_t logicFreq, int numaNode);
 void RvDpuRun(RvDpu* d, size_t nrTasklets);
 void RvDpuExecuteInstr(RvDpu* d, RvTlet* thread);
 static inline void RvDpuFini(RvDpu* d) {

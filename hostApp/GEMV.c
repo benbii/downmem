@@ -34,25 +34,26 @@ int main(int argc, char **argv) {
   // Initialize DPU system
   struct dpu_set_t set, each;
   uint32_t idx_dpu;
-  DPU_ASSERT(dpu_alloc(num_dpus, NULL, &set));
-  DPU_ASSERT(dpu_load(set, dpu_binary, NULL));
+  DMM_VERIFY(dpu_alloc(num_dpus, NULL, &set));
+  DMM_VERIFY(dpu_load(set, dpu_binary, NULL));
   // Broadcast vector to all DPUs
-  DPU_ASSERT(dpu_broadcast_to(set, "input_vector", 0, vector,
+  DMM_VERIFY(dpu_broadcast_to(set, "input_vector", 0, vector,
                               VECTOR_SIZE * sizeof(int32_t), DPU_XFER_DEFAULT));
   // Broadcast rows_per_dpu to all DPUs
-  DPU_ASSERT(dpu_broadcast_to(set, "num_rows", 0, &rows_per_dpu,
+  DMM_VERIFY(dpu_broadcast_to(set, "num_rows", 0, &rows_per_dpu,
                               sizeof(uint32_t), DPU_XFER_DEFAULT));
   // Distribute matrix rows across DPUs
   uint32_t row_offset = 0;
   DPU_FOREACH(set, each, idx_dpu) {
     int32_t *dpu_matrix_rows = &matrix[row_offset * VECTOR_SIZE];
-    dpu_prepare_xfer(each, dpu_matrix_rows);
+    // Should be fine cause that's the only xfer
+    DMM_VERIFY(dpu_prepare_xfer(each, dpu_matrix_rows));
     row_offset += rows_per_dpu;
   }
-  DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "__sys_used_mram_end", 0,
+  DMM_VERIFY(dpu_push_xfer(set, DPU_XFER_TO_DPU, "__sys_used_mram_end", 0,
                            rows_per_dpu * VECTOR_SIZE * sizeof(int32_t),
                            DPU_XFER_DEFAULT));
-  DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
+  DMM_VERIFY(dpu_launch(set, DPU_SYNCHRONOUS));
 
   // Collect results from DPUs
   int32_t *dpu_result = malloc(matrix_rows * sizeof(int32_t));
@@ -72,6 +73,6 @@ int main(int argc, char **argv) {
 
   // Cleanup
   free(matrix); free(vector); free(result); free(dpu_result);
-  DPU_ASSERT(dpu_free(set));
+  DMM_VERIFY(dpu_free(set));
   return 0;
 }
