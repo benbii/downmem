@@ -64,9 +64,9 @@ int main(int argc, char **argv) {
   DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "hstkOff", 0, 4, DPU_XFER_DEFAULT));
 
   DPU_FOREACH(set, eachDpu) { dpu_prepare_xfer(eachDpu, &nrHstkDpu); }
-  DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "nrHst", 0, 4, DPU_XFER_DEFAULT));
+  DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "nrHstk", 0, 4, DPU_XFER_DEFAULT));
   DPU_FOREACH(set, eachDpu, i) { dpu_prepare_xfer(eachDpu, hstks + i * nrHstkDpu); }
-  DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "hst", 0,
+  DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_TO_DPU, "hstk_m", 0,
                            sizeof(uint32_t) * nrHstkDpu, DPU_XFER_DEFAULT));
   DPU_ASSERT(dpu_broadcast_to(set, "nrNdl", 0, &nrNdl, sizeof(uint32_t),
                               DPU_XFER_DEFAULT));

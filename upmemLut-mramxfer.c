@@ -431,7 +431,7 @@ unsigned mramDToH[21][80] = {
 #include <time.h>
 
 extern uint32_t wramDToH[13][80], wramHToD[13][80], wramHToDBcst[13][80];
-uint64_t DmmXferOverhead(size_t nrDpu, void *xferAddrs[], uint64_t xferSz, long ty) {
+uint64_t DmmXferOverhead(size_t nrDpu, void *xferAddrs[], uint64_t xferSz, int ty) {
   const uint64_t highPos = 63 - _lzcnt_u64(xferSz), highBit = 1 << highPos;
   const uint64_t lowBits = xferSz ^ highBit;
   if (ty & 4) { // WRAM lookup table
@@ -444,6 +444,8 @@ uint64_t DmmXferOverhead(size_t nrDpu, void *xferAddrs[], uint64_t xferSz, long 
     nrDpu = (nrDpu - 1) / 32;
     if (xferSz > 32768)
       return (*lut)[12][nrDpu] * xferSz / 32768;
+    if (xferSz < 8)
+      return (*lut)[0][nrDpu];
     return ((*lut)[highPos - 2][nrDpu] * lowBits +
             (*lut)[highPos - 3][nrDpu] * (highBit - lowBits)) >> highPos;
   }
@@ -456,6 +458,8 @@ uint64_t DmmXferOverhead(size_t nrDpu, void *xferAddrs[], uint64_t xferSz, long 
   nrDpu = (nrDpu - 1) / 32;
   if (xferSz > 33554432)
     return (*lut)[20][nrDpu] * xferSz / 33554432;
+  if (xferSz < 32)
+    return (*lut)[0][nrDpu];
   return ((*lut)[highPos - 4][nrDpu] * lowBits +
           (*lut)[highPos - 5][nrDpu] * (highBit - lowBits)) >> highPos;
 }

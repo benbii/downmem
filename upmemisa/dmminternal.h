@@ -142,18 +142,22 @@ typedef struct Timing {
   long CrExtraCycleLeft;
   uint32_t CrPrevWriteRegSets[MaxNumTasklets];
 
-  long StatNrCycle;
+  long TotNrCycle, StatNrCycle;
   long StatNrInstrExec;
   long StatNrRfHazard;
   long StatRun;
   long StatDma;
   long StatEtc;
   long StatCycleRule;
-  // used to track each instructions' tsc (cycles each instruction takes)
+
+  // track whether each tasklet is ready to execute
   long lastIssue;
   long lastRunAt[MaxNumTasklets];
+#ifdef __DMM_TSCDUMP
+  // track each instructions' tsc (cycles each instruction takes)
   size_t lastPc[MaxNumTasklets];
   uint32_t StatTsc[IramNrInstr];
+#endif
 } UmmTiming;
 
 void UmmTimingInit(UmmTiming *t, UmmInstr *iram, size_t memFreq, size_t logicFreq);

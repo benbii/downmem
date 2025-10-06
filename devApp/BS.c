@@ -1,16 +1,12 @@
-/*
-* Binary Search with multiple tasklets
-*
-*/
 #include <alloc.h>
 #include <defs.h>
 #include <mram.h>
 #include <mutex.h>
 
 // Needles and Haystack
-__host uint32_t nth_kernel, nrHst, hstkOff, nrNdl;
-__host uint32_t hst[8192];
-__mram_noinit uint32_t ndl[1 << 20];
+__host uint32_t nrHstk, hstkOff, nrNdl;
+__host uint32_t hstk[8192];
+__mram_noinit uint32_t ndl[1 << 20], hstk_m[8192];
 uint32_t resAt, nrFinish;
 MUTEX_INIT(resAtMut);
 MUTEX_INIT(nrFinishMut);
@@ -29,8 +25,12 @@ size_t bs_run(uint32_t *haystack, size_t nrHstk, uint32_t needle) {
 }
 
 int main() {
+  // Collectively load MRAM to WRAM
+  const uint32_t tlLoad = 8192 / NR_TASKLETS;
+  _Static_assert(8192 % NR_TASKLETS == 0, "8192 % NR_TASKLETS == 0");
+  mram_read(hstk_m + tlLoad * me(), hstk + tlLoad * me(), tlLoad * 4);
   resAt = 0, nrFinish = 0;
-  const uint32_t min = hst[0], max = hst[nrHst - 1];
+  const uint32_t min = hstk[0], max = hstk[nrHstk - 1];
   __mram_ptr uint32_t *const reses = DPU_MRAM_HEAP_POINTER;
 
   for (size_t i = me(); i < nrNdl; i += NR_TASKLETS) {
@@ -38,7 +38,7 @@ int main() {
     if (curNdl < min || curNdl > max)
       continue;
 
-    uint32_t bruh[2] = {i, bs_run(hst, nrHst, curNdl) + hstkOff};
+    uint32_t bruh[2] = {i, bs_run(hstk, nrHstk, curNdl) + hstkOff};
     mutex_lock(resAtMut);
     uint32_t myResAt = resAt;
     resAt += 2;

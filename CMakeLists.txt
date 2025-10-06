@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.10)
 project(downmem LANGUAGES C)
 
-option(DMM_MRAMXFER "Select the mram simulation variant" "interleaveLut")
+set(DMM_MRAMXFER "interleaveLut" CACHE STRING "Select the mram simulation variant")
 option(DMM_UPMEM "upmem" ON)
 option(DMM_RV "hypothetical riscv upmem" ON)
-option(DMM_NUMA "Enable NUMA-aware memory allocation and thread binding" OFF)
+option(DMM_NUMA "Enable NUMA-aware memory allocation and thread binding" ON)
+option(DMM_TSCDUMP "Enable per-instruction overhead dumping" OFF)
 
 find_package(OpenMP REQUIRED)
 find_package(PkgConfig REQUIRED)
@@ -42,8 +43,14 @@ if(DMM_NUMA)
   target_link_libraries(dmmShared PUBLIC numa)
 endif()
 
-install(FILES rvisa/dmminternal.h upmemisa/dmminternal.h
-        dpu.h dpu_error.h dmm_common.h downmem.h
+if(DMM_TSCDUMP)
+  target_compile_definitions(dmm PUBLIC __DMM_TSCDUMP)
+  target_compile_definitions(dmmShared PUBLIC __DMM_TSCDUMP)
+endif()
+
+install(FILES rvisa/dmminternal.h DESTINATION include/rvisa)
+install(FILES upmemisa/dmminternal.h DESTINATION include/upmemisa)
+install(FILES dpu.h dpu_error.h dmm_common.h downmem.h
         DESTINATION include)
 
 if(DMM_MRAMXFER STREQUAL "analytical")

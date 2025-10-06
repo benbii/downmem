@@ -2,6 +2,10 @@
 #define __RV_DMM_H
 #include "../dmm_common.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // --- RISC-V ISA Specific Constants ---
 enum {
   // Same as UPMEM
@@ -77,7 +81,7 @@ void RvPrgInit(RvPrg* p, int numaNode);
 void RvPrgFini(RvPrg* p);
 // Binary instruction loading instead of objdump parsing
 size_t RvPrgLoadBinary(RvPrg *p, const char *filename, DmmMap symbols,
-                        bool paged[WMAINrPageR]);
+                       bool paged[WMAINrPageR]);
 
 // --- RISC-V Tasklet (no explicit state field) ---
 typedef struct {
@@ -114,18 +118,22 @@ typedef struct RvTiming {
   uint32_t CrPrevWriteRegSets[MaxNumTasklets];
 
   // Statistics
-  long StatNrCycle;
+  long TotNrCycle, StatNrCycle;
   long StatNrInstrExec;
   long StatNrRfHazard;
   long StatRun;
   long StatDma;
   long StatEtc;
   long StatCycleRule;
-  // used to track each instructions' tsc (cycles each instruction takes)
+
+  // track whether each tasklet is ready to execute
   long lastIssue;
   long lastRunAt[MaxNumTasklets];
+#ifdef __DMM_TSCDUMP
+  // track each instructions' tsc (cycles each instruction takes)
   size_t lastPc[MaxNumTasklets];
   uint32_t StatTsc[IramNrInstrR];
+#endif
 } RvTiming;
 
 void RvTimingInit(RvTiming *t, RvInstr *iram, size_t memFreq,
@@ -152,4 +160,8 @@ static inline void RvDpuFini(RvDpu* d) {
 // --- Lookup Tables ---
 extern const char* RvOpStr[RvNrOpcode];
 extern const uint8_t RvNeedRw[RvNrOpcode];
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 #endif

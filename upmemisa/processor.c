@@ -80,7 +80,7 @@ void UmmDpuExecuteInstr(UmmDpu* d, UmmTlet* thread) {
     __auto_type w = va & 0xfffff8;
     __auto_type m = vb & 0xfffffff8;
     // size_t N = (1 + (immA + (va >> 24) & 0xff) & 0xff) << 3;
-    size_t N = (1 + immA + (va >> 24) & 0xff) << 3;
+    size_t N = (1 + (immA + (va >> 24) & 0xff)) << 3;
     memcpy(wma + w, wma + WramSize + m, N);
     return;
   }
@@ -89,7 +89,7 @@ void UmmDpuExecuteInstr(UmmDpu* d, UmmTlet* thread) {
     __auto_type w = va & 0xfffff8;
     __auto_type m = vb & 0xfffffff8;
     // size_t N = (1 + (immA + (vb >> 24) & 0xff) & 0xff) << 3;
-    size_t N = (1 + immA + (va >> 24) & 0xff) << 3;
+    size_t N = (1 + (immA + (va >> 24) & 0xff)) << 3;
     memcpy(wma + WramSize + m, wma + w, N);
     return;
   }

@@ -69,7 +69,9 @@ void RvTimingInit(RvTiming *t, RvInstr *iram, size_t memFreq,
   t->Iram = iram;
   for (long i = 0; i < MaxNumTasklets; i++) {
     RvTletInit(&t->Threads[i], i);
+#ifdef __DMM_TSCDUMP
     t->lastPc[i] = IramNrInstrR - 1;
+#endif
   }
   t->FreqRatio = (double)memFreq / (double)logicFreq;
   DmmMramTimingInit(&t->MramTiming);
@@ -87,10 +89,11 @@ void RvTimingInit(RvTiming *t, RvInstr *iram, size_t memFreq,
 
 RvTlet *RvTimingCycle(RvTiming *this, size_t nrTasklets) {
   long num_memory_cycles =
-      (long)(this->FreqRatio * (double)this->StatNrCycle -
-             this->FreqRatio * (double)(this->StatNrCycle - 1));
+      (long)(this->FreqRatio * (double)this->TotNrCycle -
+             this->FreqRatio * (double)(this->TotNrCycle - 1));
   for (long i = 0; i < num_memory_cycles; i++)
     DmmMramTimingCycle(&this->MramTiming);
+  this->TotNrCycle++;
   this->StatNrCycle++;
   RvTlet *ret = NULL;
 
@@ -103,7 +106,7 @@ RvTlet *RvTimingCycle(RvTiming *this, size_t nrTasklets) {
       this->lastIssue++;
       if (this->lastIssue == nrTasklets) this->lastIssue = 0;
       if (this->lastRunAt[this->lastIssue] + NrRevolveCycle >
-          this->StatNrCycle)
+          this->TotNrCycle)
         continue;
 
       // Check if thread is sleeping or blocked via CSR bits
@@ -135,27 +138,33 @@ RvTlet *RvTimingCycle(RvTiming *this, size_t nrTasklets) {
         }
       }
 
+      static uint8_t loadOp[RvNrOpcode] = {
+          [LBr] = 1,  [LBUr] = 1, [SBr] = 1, [LHr] = 2,
+          [LHUr] = 2, [SHr] = 2,  [LWr] = 4, [SWr] = 4,
+      };
+
       // Handle MRAM load/store operations (reg = *mram_ptr constructs)
-      if (instr->Opcode == LBr || instr->Opcode == LHr || instr->Opcode == LWr ||
-          instr->Opcode == LBUr || instr->Opcode == LHUr ||
-          instr->Opcode == SBr || instr->Opcode == SHr || instr->Opcode == SWr) {
+      if (loadOp[instr->Opcode]) {
         // Calculate effective address: rs1 + immediate
         uint32_t addr = thread->Regs[instr->rs1] + instr->imm;
         // Check if address is in MRAM range
         if (addr >= MramBeginR && addr < MramBeginR + MramSizeR) {
           // MRAM access detected - push 8-byte request regardless of actual size
           uint32_t mram_addr = (addr - MramBeginR) & MramMaskR;
-          DmmMramTimingPush(&this->MramTiming, mram_addr, 8, thread->Id);
+          DmmMramTimingPush(&this->MramTiming, mram_addr, loadOp[instr->Opcode],
+                            thread->Id);
           // Block thread until MRAM access completes
           this->Csr[31] |= (1 << thread->Id); // Set blocked bit
         }
       }
 
       // Track instruction timing statistics
+#ifdef __DMM_TSCDUMP
       this->StatTsc[this->lastPc[this->lastIssue]] +=
-          this->StatNrCycle - this->lastRunAt[this->lastIssue];
+          this->TotNrCycle - this->lastRunAt[this->lastIssue];
       this->lastPc[this->lastIssue] = pc;
-      this->lastRunAt[this->lastIssue] = this->StatNrCycle;
+#endif
+      this->lastRunAt[this->lastIssue] = this->TotNrCycle;
       this->StatNrInstrExec += 1;
       this->StatRun += 1;
       ret = thread;

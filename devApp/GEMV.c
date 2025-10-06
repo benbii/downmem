@@ -1,36 +1,45 @@
+#include "moredefs.h"
 #include <alloc.h>
+#include <barrier.h>
 #include <mram.h>
-#include <defs.h>
-#include <stddef.h>
+#include <string.h>
 #include <stdint.h>
 
 #define VECTOR_SIZE 2048
 // Host inputs
 __host uint32_t num_rows; // Number of matrix rows for this DPU
-__host int32_t input_vector[VECTOR_SIZE]; // Input vector (broadcast to all DPUs)
+// Input vector (broadcast to all DPUs)
+__mram_noinit int32_t input_vector_m[VECTOR_SIZE];
 // MRAM matrix data (dynamic allocation)
 __mram_ptr int32_t *matrix_rows = (__mram_ptr int32_t *)DPU_MRAM_HEAP_POINTER;
 // Output results
-__host int32_t result_vector[1024]; // Max rows per DPU (adjust as needed)
+__mram_noinit int32_t result_vector_m[1024]; // Max rows per DPU (adjust as needed)
+// xfer with mram, work with wram
+static int32_t input_vector[VECTOR_SIZE], result_vector[1024];
+
+ALL_THREADS_BARRIER_INIT();
 
 int main() {
-  uint32_t tasklet_id = me();
-  uint32_t num_tasklets = NR_TASKLETS;
-  // No sync needed! :)
   // Calculate work distribution among tasklets
-  uint32_t rows_per_tasklet = num_rows / num_tasklets;
-  uint32_t remaining_rows = num_rows % num_tasklets;
-  uint32_t start_row = tasklet_id * rows_per_tasklet;
-  uint32_t my_rows = rows_per_tasklet;
+  const uint32_t remaining_rows = num_rows % NR_TASKLETS, me_ = me();
+  uint32_t my_rows = num_rows / NR_TASKLETS, start_row = me_ * my_rows;
+  // Host xfer with MRAM, DPU compute with wram
+  uint32_t ldSz = VECTOR_SIZE / NR_TASKLETS;
+  mram_read(input_vector_m + me_ * ldSz, input_vector + me_ * ldSz,
+            ldSz * sizeof(int32_t));
+  // Zero out results
+  ldSz = 1024 / NR_TASKLETS;
+  memset(result_vector, 0, ldSz * 4);
+  all_threads_barrier_wait();
 
   // Distribute remainder among first tasklets
-  if (tasklet_id < remaining_rows) {
-    start_row += tasklet_id;
+  if (me_ < remaining_rows) {
+    start_row += me_;
     my_rows++;
   } else {
     start_row += remaining_rows;
   }
-  uint32_t end_row = start_row + my_rows;
+  const uint32_t end_row = start_row + my_rows;
 
   // WRAM buffers for DMA
   int32_t matrix_row_buffer[128]; // Chunk of matrix row (128 * 4 = 512 bytes)
@@ -48,6 +57,10 @@ int main() {
     }
     result_vector[row] = sum;
   }
+  all_threads_barrier_wait();
 
+  _Static_assert(1024 % NR_TASKLETS == 0, "1024 % NR_TASKLETS == 0");
+  mram_write(result_vector + me_ * ldSz, result_vector_m + me_ * ldSz,
+             ldSz * sizeof(int32_t));
   return 0;
 }

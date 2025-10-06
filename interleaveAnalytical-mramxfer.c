@@ -356,7 +356,7 @@ int main(int ac, char **av) {
 #else
 
 extern uint32_t wramDToH[13][80], wramHToD[13][80], wramHToDBcst[13][80];
-uint64_t DmmXferOverhead(size_t nrDpu, void *xferAddrs[], uint64_t xferSz, long ty) {
+uint64_t DmmXferOverhead(size_t nrDpu, void *xferAddrs[], uint64_t xferSz, int ty) {
   if (ty & 4) { // WRAM -> lookup table
     typeof(wramHToD) *lut;
     switch (ty & 3) {
@@ -367,6 +367,8 @@ uint64_t DmmXferOverhead(size_t nrDpu, void *xferAddrs[], uint64_t xferSz, long 
     nrDpu = (nrDpu - 1) / 32;
     if (xferSz > 32768)
       return (*lut)[12][nrDpu] * xferSz / 32768;
+    if (xferSz < 8)
+      return (*lut)[0][nrDpu];
     const uint64_t highPos = 63 - _lzcnt_u64(xferSz), highBit = 1 << highPos;
     const uint64_t lowBits = xferSz ^ highBit;
     return ((*lut)[highPos - 2][nrDpu] * lowBits +

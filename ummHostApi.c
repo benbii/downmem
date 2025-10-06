@@ -8,17 +8,19 @@
 #include "dpu.h"
 #include "downmem.h"
 #include <omp.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
-static size_t nrCore;
+// .bss 0init all global and static vars
+struct DmmDpuRecord DmmDpuRecords[2048];
+atomic_size_t NrDmmDpuRecord, DmmTotExecUsec, DmmTotXferUsec;
+_Thread_local size_t DmmLastRecordIdx;
+
+static size_t nrCore, logicFreq, memFreq;
 static size_t dmmDpuSize;
-static size_t logicFreq;
-static size_t memFreq;
+#ifdef __DMM_TSCDUMP
 static char* dumpFile;
+#endif
 static inline struct DmmDpu* _dptr(size_t i, struct dpu_set_t s) {
   return (struct DmmDpu*)((uintptr_t)s.dmm_dpu + dmmDpuSize * i);
 }
@@ -30,10 +32,10 @@ dpu_error_t dpu_alloc(uint32_t nrDpu, const char *_, struct dpu_set_t *set) {
   set->dmm_dpu = mmap(NULL, dmmDpuSize * nrDpu, PROT_READ | PROT_WRITE,
                       MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   if (set->dmm_dpu == MAP_FAILED) return DPU_ERR_ALLOCATION;
-  if (madvise(set->dmm_dpu, dmmDpuSize * nrDpu, MADV_NOHUGEPAGE) != 0)
-    perror("madvise");
 
 #ifdef __DMM_NUMA
+  if (madvise(set->dmm_dpu, dmmDpuSize * nrDpu, MADV_NOHUGEPAGE) != 0)
+    perror("madvise");
   // Bind each DmmDpu structure to the NUMA node of its assigned CPU core
   struct bitmask *mask = numa_allocate_nodemask();
   for (size_t i = 0; i < nrDpu; ++i) {
@@ -70,10 +72,11 @@ dpu_error_t dpu_alloc_ranks(uint32_t nrRank, const char *_,
 
 static dpu_error_t _unload(struct dpu_set_t set) {
   dpu_error_t err = DPU_OK;
-  static size_t nrDump = 0;
   struct DmmDpu *firstDpu = (struct DmmDpu*)set.dmm_dpu;
   if (firstDpu->Is == UNINIT_DPUIS) return err;
 
+#ifdef __DMM_TSCDUMP
+  static size_t nrDump = 0;
   if (dumpFile != NULL) {
     size_t nthDump = nrDump++, nrInstr = 0;
     for (size_t i = 0; i < IramNrInstrR; ++i) {
@@ -104,29 +107,8 @@ static dpu_error_t _unload(struct dpu_set_t set) {
     }
     fclose(dump);
   }
-
-  size_t nrExec = 0, nrCycle = 0, bdRun = 0, bdDma = 0, bdRf = 0, bdPipe = 0;
-  for (size_t i = set.begin; i < set.end; ++i) {
-    struct DmmDpu *dpu_ = _dptr(i, set);
-    if (dpu_->Is == RV_DPUIS) {
-      nrExec += dpu_->R.Timing.StatNrInstrExec;
-      nrCycle += dpu_->R.Timing.StatNrCycle;
-      bdRun += dpu_->R.Timing.StatRun;
-      bdDma += dpu_->R.Timing.StatDma;
-      bdPipe += dpu_->R.Timing.StatEtc;
-      bdRf += dpu_->R.Timing.StatNrRfHazard;
-      RvDpuFini(&dpu_->R);
-    } else {
-      nrExec += dpu_->U.Timing.StatNrInstrExec;
-      nrCycle += dpu_->U.Timing.StatNrCycle;
-      bdRun += dpu_->U.Timing.StatRun;
-      bdDma += dpu_->U.Timing.StatDma;
-      bdPipe += dpu_->U.Timing.StatEtc;
-      bdRf += dpu_->U.Timing.StatNrRfHazard;
-      UmmDpuFini(&dpu_->U);
-    }
-  }
-  printf("%zu %zu\n%zu %zu %zu %zu\n", nrExec, nrCycle, bdRun, bdDma, bdPipe, bdRf);
+#endif
+  printf("Exec %zuusec, Xfer %zuusec till now\n", DmmTotExecUsec, DmmTotXferUsec);
   return DPU_OK;
 }
 
@@ -159,11 +141,6 @@ dpu_error_t dpu_load(struct dpu_set_t set, const char *objdmpPath, void **_) {
   #pragma omp parallel num_threads(nrCore)
   {
     size_t dpuId = omp_get_thread_num();
-#ifdef __DMM_NUMA
-    cpu_set_t cpuset; CPU_ZERO(&cpuset); CPU_SET(dpuId, &cpuset);
-    if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0)
-      perror("sched_setaffinity");
-#endif
     while (dpuId < set.begin)
       dpuId += nrCore;
     while (dpuId < set.end) {
@@ -207,11 +184,6 @@ dpu_error_t dpu_launch(struct dpu_set_t set, dpu_launch_policy_t _) {
   #pragma omp parallel num_threads(nrCore)
   {
     size_t dpuId = omp_get_thread_num();
-#ifdef __DMM_NUMA
-    cpu_set_t cpuset; CPU_ZERO(&cpuset); CPU_SET(dpuId, &cpuset);
-    if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0)
-      perror("sched_setaffinity");
-#endif
 
     size_t nrTl = DmmMapFetch(set.symbols, "NR_TASKLETS", 11);
     if (nrTl == MapNoInt) nrTl = 1;
@@ -227,6 +199,38 @@ dpu_error_t dpu_launch(struct dpu_set_t set, dpu_launch_policy_t _) {
       dpuId += nrCore;
     }
   }
+
+  // Collect launch timing statistics
+  size_t maxCycle = 0, bdExec = 0, bdDma = 0, bdPipe = 0, bdRf = 0;
+  for (size_t i = set.begin; i < set.end; ++i) {
+    struct DmmDpu *dpu = _dptr(i, set);
+    if (dpu->Is == RV_DPUIS) {
+      if (maxCycle < dpu->R.Timing.StatNrCycle)
+        maxCycle = dpu->R.Timing.StatNrCycle;
+      bdExec += dpu->R.Timing.StatRun; bdDma  += dpu->R.Timing.StatDma;
+      bdPipe += dpu->R.Timing.StatEtc; bdRf   += dpu->R.Timing.StatNrRfHazard;
+      dpu->R.Timing.StatNrCycle = 0;
+      dpu->R.Timing.StatRun = 0; dpu->R.Timing.StatDma = 0;
+      dpu->R.Timing.StatEtc = 0; dpu->R.Timing.StatNrRfHazard = 0;
+    } else {
+      if (maxCycle < dpu->U.Timing.StatNrCycle)
+        maxCycle = dpu->U.Timing.StatNrCycle;
+      bdExec += dpu->U.Timing.StatRun; bdDma  += dpu->U.Timing.StatDma;
+      bdPipe += dpu->U.Timing.StatEtc; bdRf   += dpu->U.Timing.StatNrRfHazard;
+      dpu->U.Timing.StatNrCycle = 0;
+      dpu->U.Timing.StatRun = 0; dpu->U.Timing.StatDma = 0;
+      dpu->U.Timing.StatEtc = 0; dpu->U.Timing.StatNrRfHazard = 0;
+    }
+  }
+
+  size_t myRecAt =
+      atomic_fetch_add_explicit(&NrDmmDpuRecord, 1, memory_order_relaxed);
+  DmmLastRecordIdx = myRecAt;
+  struct DmmDpuRecord* myRec = &DmmDpuRecords[myRecAt & 2047];
+  myRec->Usec = maxCycle / logicFreq;  // logicFreq in MHz, result in microseconds
+  myRec->NrDpu = set.end - set.begin; myRec->BdExec = bdExec;
+  myRec->BdDma = bdDma; myRec->BdPipe = bdPipe; myRec->BdRf = bdRf;
+  atomic_fetch_add_explicit(&DmmTotExecUsec, myRec->Usec, memory_order_relaxed);
   return DPU_OK;
 }
 
@@ -248,18 +252,23 @@ dpu_push_xfer(struct dpu_set_t set, dpu_xfer_t xfer, const char *symName,
   if (dAddr == MapNoInt) return DPU_ERR_UNKNOWN_SYMBOL;
 #ifndef __DMM_NOXFER
   // Estimate overhead
-  long ty = 4 * (dAddr < MramBegin) + (xfer & DPU_XFER_FROM_DPU);
+  enum DmmXferTy ty = 4 * (dAddr < MramBegin) + (xfer & DPU_XFER_FROM_DPU);
   _Static_assert(DPU_XFER_FROM_DPU == 1, "DPU_XFER_FROM_DPU == 1");
-  printf("%s %s %zudpu %zubytes %luusec\n", ty & 4 ? "WRAM" : "MRAM",
-         ty & 1 ? "dToH" : "hToD", set.end - set.begin, length,
-         DmmXferOverhead(set.end - set.begin, set.xfer_addr, length, ty));
+  size_t myRecAt =
+      atomic_fetch_add_explicit(&NrDmmDpuRecord, 1, memory_order_relaxed);
+  DmmLastRecordIdx = myRecAt;
+  struct DmmDpuRecord* myRec = &DmmDpuRecords[myRecAt & 2047];
+  myRec->Usec = DmmXferOverhead(set.end - set.begin, set.xfer_addr, length, ty);
+  myRec->NrDpu = set.end - set.begin;
+  myRec->Lt7IfXferTy = ty;
+  atomic_fetch_add_explicit(&DmmTotXferUsec, myRec->Usec, memory_order_relaxed);
 #endif
   if (dAddr >= MramBeginR)
     dAddr = WramSize + dAddr - MramBeginR;
   dAddr += symOff;
 
   // Single theaded xfer for small sizes
-  if (length * (set.end - set.begin) <= 65536) {
+  if (length * (set.end - set.begin) <= (1 << 20)) {
     for (size_t i = set.begin; i < set.end; ++i) {
       if (set.xfer_addr[i] == NULL)
         continue;
@@ -279,11 +288,6 @@ dpu_push_xfer(struct dpu_set_t set, dpu_xfer_t xfer, const char *symName,
   #pragma omp parallel num_threads(nrCore)
   {
     size_t dpuId = omp_get_thread_num();
-#ifdef __DMM_NUMA
-    cpu_set_t cpuset; CPU_ZERO(&cpuset); CPU_SET(dpuId, &cpuset);
-    if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0)
-      perror("sched_setaffinity");
-#endif
     while (dpuId < set.begin)
       dpuId += nrCore;
     while (dpuId < set.end) {
@@ -340,15 +344,20 @@ dpu_broadcast_to(struct dpu_set_t set, const char *symName, uint32_t symOff,
   if (dAddr == MapNoInt) return DPU_ERR_UNKNOWN_SYMBOL;
 #ifndef __DMM_NOXFER
   // Estimate overhead
-  long ty = 4 * (dAddr < MramBegin) + 2;
-  printf("%s Bcst %zudpu %zubytes %luusec\n", ty & 4 ? "WRAM" : "MRAM",
-         set.end - set.begin, length,
-         DmmXferOverhead(set.end - set.begin, set.xfer_addr, length, ty));
+  enum DmmXferTy ty = 4 * (dAddr < MramBegin) + 2;
+  size_t myRecAt =
+      atomic_fetch_add_explicit(&NrDmmDpuRecord, 1, memory_order_relaxed);
+  DmmLastRecordIdx = myRecAt;
+  struct DmmDpuRecord* myRec = &DmmDpuRecords[myRecAt & 2047];
+  myRec->Usec = DmmXferOverhead(set.end - set.begin, set.xfer_addr, length, ty);
+  myRec->NrDpu = set.end - set.begin;
+  myRec->Lt7IfXferTy = ty;
+  atomic_fetch_add_explicit(&DmmTotXferUsec, myRec->Usec, memory_order_relaxed);
 #endif
   if (dAddr >= MramBeginR)
     dAddr = WramSize + dAddr - MramBeginR;
   dAddr += symOff;
-  if (length <= 4096) {
+  if (length * (set.end - set.begin) <= (1 << 20)) {
     for (size_t i = set.begin; i < set.end; ++i) {
       if (set.xfer_addr[i] != NULL)
         ret = DPU_ERR_TRANSFER_ALREADY_SET;
@@ -365,11 +374,6 @@ dpu_broadcast_to(struct dpu_set_t set, const char *symName, uint32_t symOff,
   #pragma omp parallel num_threads(nrCore)
   {
     size_t dpuId = omp_get_thread_num();
-#ifdef __DMM_NUMA
-    cpu_set_t cpuset; CPU_ZERO(&cpuset); CPU_SET(dpuId, &cpuset);
-    if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0)
-      perror("sched_setaffinity");
-#endif
     while (dpuId < set.begin)
       dpuId += nrCore;
     while (dpuId < set.end) {
@@ -430,8 +434,10 @@ static void __attribute__((constructor)) a() {
   if (e != NULL) logicFreq = strtoul(e, NULL, 0);
   e = getenv("DMM_MemoryFrequency");
   if (e != NULL) memFreq = strtoul(e, NULL, 0);
+#ifdef __DMM_TSCDUMP
   e = getenv("DMM_TscDumpFmt");
   if (e != NULL) dumpFile = strdup(e);
+#endif
 
   if (nrCore <= 0 || nrCore > 512) nrCore = sysconf(_SC_NPROCESSORS_ONLN);
   if (logicFreq <= 0) logicFreq = 350;
@@ -440,4 +446,20 @@ static void __attribute__((constructor)) a() {
   dmmDpuSize = sysconf(_SC_PAGESIZE);
   while (dmmDpuSize < sizeof(struct DmmDpu))
     dmmDpuSize += 4096;
+
+#ifdef __DMM_NUMA
+  // Set thread affinity once at startup - threads will be bound to cores matching their ID
+  // Skip thread 0 (main thread) to avoid restricting other parts of the app
+  #pragma omp parallel num_threads(nrCore)
+  {
+    size_t dpuId = omp_get_thread_num();
+    if (dpuId != 0) {
+      cpu_set_t cpuset;
+      CPU_ZERO(&cpuset);
+      CPU_SET(dpuId, &cpuset);
+      if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0)
+        perror("sched_setaffinity");
+    }
+  }
+#endif
 }

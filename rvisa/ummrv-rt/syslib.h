@@ -55,7 +55,8 @@ static inline void resume(uint32_t id) {
 // Runtime symbols provided by linker script
 extern uint8_t __sys_used_scratchpad_end;
 extern __attribute__((address_space(255), section(".mram.noinit")))
-uint8_t __sys_used_mram_end;
+  uint8_t __sys_used_mram_end;
+typedef int sysname_t;
 #define DPU_MRAM_HEAP_POINTER &__sys_used_mram_end
 
 #endif // SYSLIB_H

@@ -146,6 +146,6 @@ do {                                                                         \
  * @brief Error management for DPU api functions, calling exit if an error happens
  * @param statement the call to the DPU api to execute and check
  * @hideinitializer */
-#define DPU_ASSERT(statement) DPU_CHECK(statement, exit(EXIT_FAILURE))
-#define DMM_VERIFY(statement) DMM_ONERROR(statement, exit(EXIT_FAILURE))
+#define DPU_ASSERT(statement) DPU_CHECK(statement, exit(__error))
+#define DMM_VERIFY(statement) DMM_ONERROR(statement, exit(__error))
 

@@ -1,19 +1,43 @@
 // Declarations in this file are ISA-agnostic
 #pragma once
+#include <stdatomic.h>
 #include <stdbool.h>
-#include <stdint.h>
-#include <stddef.h>
 #include <string.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+enum DmmXferTy {
+  // Broadcast implies HtoD
+  DmmHtoDMram = 0, DmmDtoHMram = 1, DmmBcstMram = 2,
+  DmmHtoDWram = 4, DmmDtoHWram = 5, DmmBcstWram = 6,
+  // ty & 1: 1 device to host, 0 host to device
+  // ty & 2: 1 broadcast, 0 not broadcast
+  // ty & 4: 1 wram, 0 mram
+  DmmXferDtoH = 1, DmmXferBcst = 2, DmmXferWram = 4,
+};
+
+// A record of timing of a DPU launch or transfer
+struct DmmDpuRecord {
+  size_t NrDpu, Usec;
+  union {
+    size_t BdExec;
+    size_t Lt7IfXferTy;
+  };
+  size_t BdDma, BdPipe, BdRf;
+};
+// fixed size; later records overwrite earlier ones
+extern struct DmmDpuRecord DmmDpuRecords[2048];
+extern atomic_size_t NrDmmDpuRecord, DmmTotExecUsec, DmmTotXferUsec;
+extern _Thread_local size_t DmmLastRecordIdx;
 
 #ifndef __DMM_NOXFER
 // Estimates the overhead of a given transfer.
 // The exact mechanism depends on CMake flags when compiling Dmm.
 // Returns time in microseconds. `xferAddrs` not used unless using analytical
 // simulation.
-// ty & 1: 1 device to host, 0 host to device
-// ty & 2: 1 broadcast, 0 not broadcast
-// ty & 4: 1 wram, 0 mram
-uint64_t DmmXferOverhead(size_t nrDpu, void *xferAddrs[], uint64_t xferSz, long ty);
+uint64_t DmmXferOverhead(size_t nrDpu, void *xferAddrs[], uint64_t xferSz,
+                         enum DmmXferTy ty);
 #endif
 
 typedef void* DmmMap;
@@ -88,3 +112,6 @@ static inline long DmmMramTimingPop(DmmMramTiming* mt) {
   return val;
 }
 
+#ifdef __cplusplus
+} /* extern "C" */
+#endif

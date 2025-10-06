@@ -70,7 +70,9 @@ void UmmTimingInit(UmmTiming *t, UmmInstr *iram, size_t memFreq,
   t->Iram = iram;
   for (long i = 0; i < MaxNumTasklets; i++) {
     UmmTletInit(&t->Threads[i], i);
+#ifdef __DMM_TSCDUMP
     t->lastPc[i] = IramNrInstr - 1;
+#endif
   }
   t->FreqRatio = (double)memFreq / (double)logicFreq;
   DmmMramTimingInit(&t->MramTiming);
@@ -88,13 +90,12 @@ void UmmTimingInit(UmmTiming *t, UmmInstr *iram, size_t memFreq,
 
 UmmTlet* UmmTimingCycle(UmmTiming* this, size_t nrTasklets) {
   long num_memory_cycles = (long)(
-    this->FreqRatio * (double)this->StatNrCycle -
-    this->FreqRatio * (double)(this->StatNrCycle - 1));
+    this->FreqRatio * (double)this->TotNrCycle -
+    this->FreqRatio * (double)(this->TotNrCycle - 1));
   for (long i = 0; i < num_memory_cycles; i++) {
     DmmMramTimingCycle(&this->MramTiming);
   }
-  this->StatNrCycle++;
-  // printf("\nc%ld ", this->StatNrCycle);
+  this->TotNrCycle++; this->StatNrCycle++;
   UmmTlet* ret = NULL;
 
   if (this->PpInInstr != (UmmInstr*)1 || this->CrCurInstr != NULL) {
@@ -105,7 +106,7 @@ UmmTlet* UmmTimingCycle(UmmTiming* this, size_t nrTasklets) {
       UmmTlet* thread = &this->Threads[this->lastIssue];
       this->lastIssue++;
       if (this->lastIssue == nrTasklets) { this->lastIssue = 0; }
-      if (this->lastRunAt[this->lastIssue] + NrRevolveCycle > this->StatNrCycle) {
+      if (this->lastRunAt[this->lastIssue] + NrRevolveCycle > this->TotNrCycle) {
         continue;
       }
       if (thread->State != RUNNABLE) {
@@ -122,17 +123,18 @@ UmmTlet* UmmTimingCycle(UmmTiming* this, size_t nrTasklets) {
         __auto_type vc = thread->Regs[instr->RegA];
         __auto_type ad = (thread->Regs[instr->RegB] & 0xfffffff8);
         __auto_type sz = (1 + instr->ImmA + (vc >> 24) & 0xff) << 3;
-				// printf("mem %d %d %d ", ad, sz, thread->Id);
         DmmMramTimingPush(&this->MramTiming, ad, sz, thread->Id);
         thread->State = BLOCK;
       }
 
       // printf("t%d %s %d %d %d", thread->Id, UmmOpStr[instr->Opcode],
       //        instr->RegC, instr->RegA, instr->RegB);
+#ifdef __DMM_TSCDUMP
       this->StatTsc[this->lastPc[this->lastIssue]] +=
-        this->StatNrCycle - this->lastRunAt[this->lastIssue];
+        this->TotNrCycle - this->lastRunAt[this->lastIssue];
       this->lastPc[this->lastIssue] = pc;
-      this->lastRunAt[this->lastIssue] = this->StatNrCycle;
+#endif
+      this->lastRunAt[this->lastIssue] = this->TotNrCycle;
       this->StatNrInstrExec += 1;
       this->StatRun += 1;
       ret = thread;

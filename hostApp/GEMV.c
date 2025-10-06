@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
   DMM_VERIFY(dpu_alloc(num_dpus, NULL, &set));
   DMM_VERIFY(dpu_load(set, dpu_binary, NULL));
   // Broadcast vector to all DPUs
-  DMM_VERIFY(dpu_broadcast_to(set, "input_vector", 0, vector,
+  DMM_VERIFY(dpu_broadcast_to(set, "input_vector_m", 0, vector,
                               VECTOR_SIZE * sizeof(int32_t), DPU_XFER_DEFAULT));
   // Broadcast rows_per_dpu to all DPUs
   DMM_VERIFY(dpu_broadcast_to(set, "num_rows", 0, &rows_per_dpu,
@@ -63,8 +63,8 @@ int main(int argc, char **argv) {
     dpu_prepare_xfer(each, &dpu_result[row_offset]);
     row_offset += rows_per_dpu;
   }
-  dpu_push_xfer(set, DPU_XFER_FROM_DPU, "result_vector", 0,
-                rows_per_dpu * sizeof(int32_t), DPU_XFER_DEFAULT);
+  DMM_VERIFY(dpu_push_xfer(set, DPU_XFER_FROM_DPU, "result_vector_m", 0,
+                           rows_per_dpu * sizeof(int32_t), DPU_XFER_DEFAULT));
 
   for (uint32_t i = 0; i < matrix_rows; i++)
     if (result[i] != dpu_result[i])
