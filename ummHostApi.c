@@ -21,6 +21,9 @@ static size_t dmmDpuSize;
 #ifdef __DMM_TSCDUMP
 static char* dumpFile;
 #endif
+#ifdef __DMM_NUMA
+static cpu_set_t t0aff;
+#endif
 static inline struct DmmDpu* _dptr(size_t i, struct dpu_set_t s) {
   return (struct DmmDpu*)((uintptr_t)s.dmm_dpu + dmmDpuSize * i);
 }
@@ -70,14 +73,11 @@ dpu_error_t dpu_alloc_ranks(uint32_t nrRank, const char *_,
   return dpu_alloc(nrRank * 64, _, set);
 }
 
-static dpu_error_t _unload(struct dpu_set_t set) {
-  dpu_error_t err = DPU_OK;
-  struct DmmDpu *firstDpu = (struct DmmDpu*)set.dmm_dpu;
-  if (firstDpu->Is == UNINIT_DPUIS) return err;
-
+static void _unload(struct dpu_set_t set) {
 #ifdef __DMM_TSCDUMP
   static size_t nrDump = 0;
   if (dumpFile != NULL) {
+    struct DmmDpu *firstDpu = (struct DmmDpu*)set.dmm_dpu;
     size_t nthDump = nrDump++, nrInstr = 0;
     for (size_t i = 0; i < IramNrInstrR; ++i) {
       bool hasInstr = firstDpu->Is == RV_DPUIS ?
@@ -91,7 +91,7 @@ static dpu_error_t _unload(struct dpu_set_t set) {
     FILE *dump = fopen(name, "w");
     if (dump == NULL) return DPU_ERR_VPD_INVALID_FILE;
 
-    for (size_t i = set.begin; i < set.end; ++i) {
+    for (size_t i = set.begin; nrInstr != 0 && i < set.end; ++i) {
       fprintf(dump, "DPU %zu\n", i);
       struct DmmDpu* d = _dptr(i, set);
       for (size_t j = 0; j < nrInstr; ++j) {
@@ -108,22 +108,22 @@ static dpu_error_t _unload(struct dpu_set_t set) {
     fclose(dump);
   }
 #endif
-  printf("Exec %zuusec, Xfer %zuusec till now\n", DmmTotExecUsec, DmmTotXferUsec);
-  return DPU_OK;
 }
 
 dpu_error_t dpu_free(struct dpu_set_t set) {
-  dpu_error_t err = _unload(set);
+  _unload(set);
+  printf("Freed %zu DPU, Exec %zuusec, Xfer %zuusec till now\n",
+         set.end - set.begin, DmmTotExecUsec, DmmTotXferUsec);
+  for (size_t i = set.begin; i < set.end; ++i) {
+    struct DmmDpu* d = _dptr(i, set);
+    if (d->Is == UMM_DPUIS) UmmDpuFini(&d->U);
+    else if (d->Is == RV_DPUIS) RvDpuFini(&d->R);
+  }
   DmmMapFini(set.symbols);
   free(set.xfer_addr);
   munmap(set.dmm_dpu, dmmDpuSize * (set.end - set.begin));
-  return err;
+  return DPU_OK;
 }
-
-// don't use this dirty trick...
-// _Static_assert(offsetof(struct DmmDpu, r.Program.WMAram) ==
-//                offsetof(struct DmmDpu, u.Program.WMAram),
-//                "WMAram dereference breaks!");
 
 dpu_error_t dpu_load(struct dpu_set_t set, const char *objdmpPath, void **_) {
   _unload(set);
@@ -138,6 +138,11 @@ dpu_error_t dpu_load(struct dpu_set_t set, const char *objdmpPath, void **_) {
     prgWma = rprg.WMAram;
   }
 
+#ifdef __DMM_NUMA
+  cpu_set_t cpuset; CPU_ZERO(&cpuset); CPU_SET(0, &cpuset);
+  if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0)
+    perror("sched_setaffinity");
+#endif
   #pragma omp parallel num_threads(nrCore)
   {
     size_t dpuId = omp_get_thread_num();
@@ -173,6 +178,10 @@ dpu_error_t dpu_load(struct dpu_set_t set, const char *objdmpPath, void **_) {
       dpuId += nrCore;
     }
   }
+#ifdef __DMM_NUMA
+  if (sched_setaffinity(0, sizeof(cpu_set_t), &t0aff) != 0)
+    perror("sched_setaffinity");
+#endif
 
   UmmPrgFini(&uprg); RvPrgFini(&rprg);
   return DPU_OK;
@@ -181,6 +190,11 @@ dpu_error_t dpu_load(struct dpu_set_t set, const char *objdmpPath, void **_) {
 dpu_error_t dpu_launch(struct dpu_set_t set, dpu_launch_policy_t _) {
   if (set.dmm_dpu[set.begin].Is == UNINIT_DPUIS)
     return DPU_ERR_NO_PROGRAM_LOADED;
+#ifdef __DMM_NUMA
+  cpu_set_t cpuset; CPU_ZERO(&cpuset); CPU_SET(0, &cpuset);
+  if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0)
+    perror("sched_setaffinity");
+#endif
   #pragma omp parallel num_threads(nrCore)
   {
     size_t dpuId = omp_get_thread_num();
@@ -199,6 +213,10 @@ dpu_error_t dpu_launch(struct dpu_set_t set, dpu_launch_policy_t _) {
       dpuId += nrCore;
     }
   }
+#ifdef __DMM_NUMA
+  if (sched_setaffinity(0, sizeof(cpu_set_t), &t0aff) != 0)
+    perror("sched_setaffinity");
+#endif
 
   // Collect launch timing statistics
   size_t maxCycle = 0, bdExec = 0, bdDma = 0, bdPipe = 0, bdRf = 0;
@@ -285,6 +303,11 @@ dpu_push_xfer(struct dpu_set_t set, dpu_xfer_t xfer, const char *symName,
     return DPU_OK;
   }
 
+#ifdef __DMM_NUMA
+  cpu_set_t cpuset; CPU_ZERO(&cpuset); CPU_SET(0, &cpuset);
+  if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0)
+    perror("sched_setaffinity");
+#endif
   #pragma omp parallel num_threads(nrCore)
   {
     size_t dpuId = omp_get_thread_num();
@@ -305,6 +328,10 @@ dpu_push_xfer(struct dpu_set_t set, dpu_xfer_t xfer, const char *symName,
       dpuId += nrCore;
     }
   }
+#ifdef __DMM_NUMA
+  if (sched_setaffinity(0, sizeof(cpu_set_t), &t0aff) != 0)
+    perror("sched_setaffinity");
+#endif
   return DPU_OK;
 }
 
@@ -371,6 +398,11 @@ dpu_broadcast_to(struct dpu_set_t set, const char *symName, uint32_t symOff,
     return ret;
   }
 
+#ifdef __DMM_NUMA
+  cpu_set_t cpuset; CPU_ZERO(&cpuset); CPU_SET(0, &cpuset);
+  if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0)
+    perror("sched_setaffinity");
+#endif
   #pragma omp parallel num_threads(nrCore)
   {
     size_t dpuId = omp_get_thread_num();
@@ -388,6 +420,10 @@ dpu_broadcast_to(struct dpu_set_t set, const char *symName, uint32_t symOff,
       dpuId += nrCore;
     }
   }
+#ifdef __DMM_NUMA
+  if (sched_setaffinity(0, sizeof(cpu_set_t), &t0aff) != 0)
+    perror("sched_setaffinity");
+#endif
   return DPU_OK;
 }
 
@@ -448,18 +484,20 @@ static void __attribute__((constructor)) a() {
     dmmDpuSize += 4096;
 
 #ifdef __DMM_NUMA
-  // Set thread affinity once at startup - threads will be bound to cores matching their ID
-  // Skip thread 0 (main thread) to avoid restricting other parts of the app
-  #pragma omp parallel num_threads(nrCore)
+  if (sched_getaffinity(0, sizeof(cpu_set_t), &t0aff) != 0)
+    fputs("sched_getaffinity thread 0 failed\n", stderr);
+// Set thread affinity once at startup - threads will be bound to cores matching
+// their ID. Skip t0 (main thread) to avoid restricting other parts of the app
+#pragma omp parallel num_threads(nrCore)
   {
     size_t dpuId = omp_get_thread_num();
-    if (dpuId != 0) {
-      cpu_set_t cpuset;
-      CPU_ZERO(&cpuset);
-      CPU_SET(dpuId, &cpuset);
-      if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0)
+    cpu_set_t cpuset; CPU_ZERO(&cpuset); CPU_SET(dpuId, &cpuset);
+    if (sched_setaffinity(0, sizeof(cpu_set_t), &cpuset) != 0)
         perror("sched_setaffinity");
-    }
   }
+  // Somehow, set and reset affinity ot t0 here makes prim programs 4% faster
+  // overall compared to an `if (dpuId != 0)` above. Don't know why.
+  if (sched_setaffinity(0, sizeof(cpu_set_t), &t0aff) != 0)
+    perror("sched_setaffinity");
 #endif
 }

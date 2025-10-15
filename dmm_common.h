@@ -1,10 +1,15 @@
 // Declarations in this file are ISA-agnostic
 #pragma once
-#include <stdatomic.h>
-#include <stdbool.h>
-#include <string.h>
 #ifdef __cplusplus
 extern "C" {
+#include <atomic>
+#include <cstddef>
+#include <cstring>
+#else
+#include <stdatomic.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <string.h>
 #endif
 
 enum DmmXferTy {
@@ -28,8 +33,13 @@ struct DmmDpuRecord {
 };
 // fixed size; later records overwrite earlier ones
 extern struct DmmDpuRecord DmmDpuRecords[2048];
+#ifdef __cplusplus
+extern std::atomic<size_t> NrDmmDpuRecord, DmmTotExecUsec, DmmTotXferUsec;
+extern thread_local size_t DmmLastRecordIdx;
+#else
 extern atomic_size_t NrDmmDpuRecord, DmmTotExecUsec, DmmTotXferUsec;
 extern _Thread_local size_t DmmLastRecordIdx;
+#endif
 
 #ifndef __DMM_NOXFER
 // Estimates the overhead of a given transfer.

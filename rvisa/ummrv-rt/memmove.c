@@ -25,7 +25,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h>
+#include "string.h"
 
 // Prevent compiler from replacing our implementations with calls to themselves
 #ifdef __GNUC__

@@ -1,6 +1,5 @@
+#include "moredefs.h"
 #include <alloc.h>
-#include <barrier.h>
-#include <defs.h>
 #include <mram.h>
 #include <mutex.h>
 #include <stddef.h>
@@ -13,10 +12,12 @@ __mram_ptr uint32_t *input_data = (__mram_ptr uint32_t *)DPU_MRAM_HEAP_POINTER;
 __mram_noinit uint32_t output_data[69420];
 __host volatile uint32_t out_at; // current index at output_data, aka, nr. of outputs
 MUTEX_INIT(mut_outat);
+ALL_THREADS_BARRIER_INIT();
 
 int main() {
   uint32_t tasklet_id = me();
   out_at = 0;
+  all_threads_barrier_wait();
 
   // Calculate work distribution (ensure even number of elements per tasklet for
   // 8-byte alignment)
@@ -53,6 +54,8 @@ int main() {
       local_count = 0;
     }
   }
+  // Still don't know why this barrier is needed :(
+  all_threads_barrier_wait();
 
   // Each thread write its leftover local_odds with padding for 8-byte alignment
   // Add padding zero if needed for even count (8-byte alignment)

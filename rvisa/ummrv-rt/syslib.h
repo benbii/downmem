@@ -1,5 +1,5 @@
-#ifndef DMMRV_SYSLIB_H
-#define DMMRV_SYSLIB_H
+#ifndef __DOWNMEM_RVDEVICE
+#define __DOWNMEM_RVDEVICE
 
 #include <stdint.h>
 #include <stddef.h>

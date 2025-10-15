@@ -1,3 +1,4 @@
+#include <barrier.h>
 #include <defs.h>
 #ifndef ALL_THREADS_BARRIER_INIT
 #define ALL_THREADS_BARRIER_INIT() BARRIER_INIT(bar_allthrd, NR_TASKLETS)

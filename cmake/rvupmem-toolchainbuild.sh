@@ -37,7 +37,7 @@ cmake -GNinja -S llvm -B build "-DCMAKE_INSTALL_PREFIX=$1" \
   -DCMAKE_C_COMPILER="$C" -DCMAKE_CXX_COMPILER="$C++" \
   -DLLVM_ENABLE_LLD=ON -DLLVM_ENABLE_LTO=Thin \
   -DLLVM_BUILD_LLVM_DYLIB=ON -DLLVM_LINK_LLVM_DYLIB=ON \
-  -DLLVM_PARALLEL_LINK_JOBS=20 -DLLVM_RAM_PER_LINK_JOB=5500 \
+  -DLLVM_RAM_PER_LINK_JOB=5500 \
   -DCMAKE_C_FLAGS='-march=native -pipe' \
   -DCMAKE_CXX_FLAGS='-march=native -pipe' \
   -DLLVM_TARGETS_TO_BUILD='X86;RISCV' \
@@ -74,9 +74,9 @@ cmake -S ../../compiler-rt -B. -GNinja \
   -DCMAKE_INSTALL_PREFIX="$1" \
   "-DCOMPILER_RT_INSTALL_PATH=$1/lib/clang/20"
 ninja -j16 install
-mkdir -p "$1/lib/clang/20/lib/risc32--"
+mkdir -p "$1/lib/clang/20/lib/riscv32--"
 cp "$1/lib/clang/20/lib/baremetal/libclang_rt.builtins-riscv32.a" \
-  "$1/lib/clang/20/lib/risc32--/libclang_rt.builtins-riscv32.a"
+  "$1/lib/clang/20/lib/riscv32--/libclang_rt.builtins-riscv32.a"
 
 cd "$MYDIR/.."
 rm -r build || true
