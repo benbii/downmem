@@ -58,10 +58,13 @@ int main(int argc, char **argv) {
                                   ? roundup(input_size_dpu, 8)
                                   : input_size_dpu;
 
-  A = malloc(input_size_dpu_8bytes * nr_of_dpus * sizeof(int));
-  B = malloc(input_size_dpu_8bytes * nr_of_dpus * sizeof(int));
-  C = malloc(input_size_dpu_8bytes * nr_of_dpus * sizeof(int));
-  C2 = malloc(input_size_dpu_8bytes * nr_of_dpus * sizeof(int));
+  int total_alloc_size_bytes = input_size_dpu_8bytes * nr_of_dpus * sizeof(int);
+
+  A = malloc(total_alloc_size_bytes);
+  B = malloc(total_alloc_size_bytes);
+  C = malloc(total_alloc_size_bytes);
+  C2 = malloc(total_alloc_size_bytes);
+
   int *bufferA = A;
   int *bufferB = B;
   int *bufferC = C2;
