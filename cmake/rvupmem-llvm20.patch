@@ -16,7 +16,7 @@ diff --git a/clang/lib/Driver/ToolChains/BareMetal.cpp b/clang/lib/Driver/ToolCh
 index ffb1c6e34d60..5e301b32f3ff 100644
 --- a/clang/lib/Driver/ToolChains/BareMetal.cpp
 +++ b/clang/lib/Driver/ToolChains/BareMetal.cpp
-@@ -473,6 +473,21 @@ void baremetal::Linker::ConstructJob(Compilation &C, const JobAction &JA,
+@@ -473,6 +473,22 @@ void baremetal::Linker::ConstructJob(Compilation &C, const JobAction &JA,
      CmdArgs.push_back(Arch == llvm::Triple::aarch64_be ? "-EB" : "-EL");
    }
 
@@ -33,6 +33,7 @@ index ffb1c6e34d60..5e301b32f3ff 100644
 +        NRTasklets = DefineStr.substr(12);
 +    }
 +    CmdArgs.push_back(Args.MakeArgString("--defsym=NR_TASKLETS=" + NRTasklets));
++    CmdArgs.push_back(Args.MakeArgString("-gc-sections"));
 +  }
 +
    if (!Args.hasArg(options::OPT_nostdlib, options::OPT_nostartfiles,
@@ -66,7 +67,7 @@ index 013c26c72bfd..70b8e793bede 100644
 +  bits<5> wramAddr;
 +  bits<5> mramAddr;
 +  bits<5> size;
-+  
++
 +  let Inst{31-27} = 0b00000;  // Custom funct5
 +  let Inst{26-22} = size;     // size register
 +  let Inst{21-20} = 0b00;     // padding
@@ -83,7 +84,7 @@ index 013c26c72bfd..70b8e793bede 100644
 +  bits<5> wramAddr;
 +  bits<5> mramAddr;
 +  bits<5> size;
-+  
++
 +  let Inst{31-27} = 0b00001;  // Custom funct5, different from LDMRAM
 +  let Inst{26-22} = size;     // size register
 +  let Inst{21-20} = 0b00;     // padding
@@ -114,7 +115,7 @@ new file mode 100644
 index 000000000000..d1dc4d2d8c37
 --- /dev/null
 +++ b/llvm/lib/Target/RISCV/RISCVInstrInfoCustom.td
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,46 @@
 +//===-- RISCVInstrInfoCustom.td - Custom Hardware Instructions -*- tablegen -*-===//
 +//
 +// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -161,7 +162,6 @@ index 000000000000..d1dc4d2d8c37
 +  let mayStore = 1;        // Stores to memory
 +  let isCodeGenOnly = 0;
 +}
-+
 diff --git a/llvm/lib/Target/RISCV/RISCVProcessors.td b/llvm/lib/Target/RISCV/RISCVProcessors.td
 index b5eea138732a..989b334eeb7d 100644
 --- a/llvm/lib/Target/RISCV/RISCVProcessors.td

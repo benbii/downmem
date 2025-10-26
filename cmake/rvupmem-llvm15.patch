@@ -17,7 +17,7 @@ diff --git a/clang/lib/Driver/ToolChains/BareMetal.cpp b/clang/lib/Driver/ToolCh
 index 5f1638a159d5..1924ada603c5 100644
 --- a/clang/lib/Driver/ToolChains/BareMetal.cpp
 +++ b/clang/lib/Driver/ToolChains/BareMetal.cpp
-@@ -322,13 +322,33 @@ void baremetal::Linker::ConstructJob(Compilation &C, const JobAction &JA,
+@@ -322,13 +322,34 @@ void baremetal::Linker::ConstructJob(Compilation &C, const JobAction &JA,
  
    TC.AddFilePathLibArgs(Args, CmdArgs);
  
@@ -40,6 +40,7 @@ index 5f1638a159d5..1924ada603c5 100644
 +        NRTasklets = DefineStr.substr(12);
 +    }
 +    CmdArgs.push_back(Args.MakeArgString("--defsym=NR_TASKLETS=" + NRTasklets));
++    CmdArgs.push_back(Args.MakeArgString("-gc-sections"));
 +  }
 +
    CmdArgs.push_back(Args.MakeArgString("-L" + TC.getRuntimesDir()));

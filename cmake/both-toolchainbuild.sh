@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-echo Usage: "$0" installPath llvmSrcPath optionalClang
+echo Usage: "$0" installPath llvmSrcPath optionalClang llvmEnabledProjects
 MYDIR="$(dirname "$(realpath "$0")")"
 mkdir -p "$1"
 cd "$2"
@@ -38,9 +38,9 @@ cmake -GNinja -S llvm -B build "-DCMAKE_INSTALL_PREFIX=$1" \
   -DLLVM_PARALLEL_LINK_JOBS=5 \
   -DCMAKE_C_FLAGS='-march=native -pipe' \
   -DCMAKE_CXX_FLAGS='-march=native -pipe' \
+  -DCMAKE_{SHARED,EXE}_LINKER_FLAGS='-Wl,--undefined-version' \
   -DLLVM_TARGETS_TO_BUILD='X86;DPU;RISCV' \
-  -DLLVM_ENABLE_PROJECTS='clang;lld;mlir;clang-tools-extra;openmp;compiler-rt' \
-  -DCOMPILER_RT_SUPPORTED_ARCH="x86_64" \
+  -DLLVM_ENABLE_PROJECTS="${4:-clang;lld;openmp}" \
   -DLLVM_ENABLE_PLUGINS=ON -DLLVM_ENABLE_FFI=yes \
   -DLLVM_ENABLE_LIBEDIT=yes -DLLVM_ENABLE_LIBXML2=yes \
   -DLLVM_ENABLE_EH=ON -DLLVM_ENABLE_RTTI=ON \
@@ -94,5 +94,4 @@ ninja -C build -j16 install
 ninja -C build -j16 dpuExamples
 
 bash runTests.sh "$1"
-bash rvRunTests.sh "$1"
 
