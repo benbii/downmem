@@ -1,6 +1,8 @@
 // PrIM's Matrix vector multiplication with multiple tasklet
 #include <alloc.h>
 #include <barrier.h>
+#include "moredefs.h" 
+#include <mram.h>
 
 typedef struct {
   uint32_t n_size, n_size_pad, nr_rows, max_rows;
