@@ -38,11 +38,20 @@
 -- 执行程序，./build/myhost2 34 32  devApp/objdumps/mydev2.objdump 
 
 # cinm编译程序在downmem模拟器运行实例  
--- 原理：将cinm编译输出的va.dpu.c程序复制到downmem模拟器中，利用downmem编译环境进行编译和执行  
+-- 原理：将cinm编译输出的va.dpu.c程序复制到downmem模拟器中，利用downmem编译环境进行编译和执行    
+## rv指令集模式  
+-- 前提：已安装cinm编译器，同时已正常执行cinm中的compile-benches.sh文件。生成了testbench/gen/va/irs/va.dpu.c文件  
+-- 具体详见：https://github.com/jingge815/Cinnamon/blob/feature/develop-compiler/install.md  
+-- cd cinm-app-example-umm-va/  
+-- ./rvVA.sh  /编译器路径/  
+-- 例如： ./rvVA.sh /home/fengjingge/src/downmem/new2-downmem/installed   
+
+## upmem指令集模式  
 -- 前提：已安装cinm编译器，同时已正常执行cinm中的compile-benches.sh文件。生成了testbench/gen/va/irs/va.dpu.c文件  
 -- 具体详见：https://github.com/jingge815/Cinnamon/blob/feature/develop-compiler/install.md  
 -- cd cinm-app-example-umm-va/  
 -- ./build.sh  
+
 
 
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # 功能：CINM到DownMem适配构建脚本
-# 将CINM编译输出的DPU代码在DownMem模拟器中运行，完成从CINM框架到DownMem框架的转换
+# 将CINM编译输出的DPU代码在DownMem模拟器中upmem指令集模式运行，完成从CINM框架到DownMem框架的转换
 
 # 定义基础路径变量
 BASE_PATH="/home/fengjingge/src/downmem/new2-downmem/downmem"
