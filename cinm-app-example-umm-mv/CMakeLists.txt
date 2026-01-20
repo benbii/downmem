@@ -5,5 +5,6 @@ project(dmmAppExample)
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -no-pie")
 
 find_package(Dmm REQUIRED)
-add_executable(va vahost.c)
-target_link_libraries(va PRIVATE Dmm::dmm)
+add_executable(mv mvhost.c)
+target_link_libraries(mv PRIVATE Dmm::dmm)
+

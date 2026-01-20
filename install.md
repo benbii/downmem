@@ -42,15 +42,26 @@
 ## rv指令集模式  
 -- 前提：已安装cinm编译器，同时已正常执行cinm中的compile-benches.sh文件。生成了testbench/gen/va/irs/va.dpu.c文件  
 -- 具体详见：https://github.com/jingge815/Cinnamon/blob/feature/develop-compiler/install.md  
--- cd cinm-app-example-umm-va/  
+-- cd ./cinm-app-example-umm-va/  
 -- ./rvVA.sh  /编译器路径/  
 -- 例如： ./rvVA.sh /home/fengjingge/src/downmem/new2-downmem/installed   
+
+-- 向量乘法实例(当前实现还存在一些问题，默认命令可正常运行，后续还需要修改编译器本身实现通用化)
+-- cd ../cinm-app-example-umm-mv/  
+-- ./rvMV.sh  /编译器路径/  
+-- 例如： ./rvMV.sh /home/fengjingge/src/downmem/new2-downmem/installed   
 
 ## upmem指令集模式  
 -- 前提：已安装cinm编译器，同时已正常执行cinm中的compile-benches.sh文件。生成了testbench/gen/va/irs/va.dpu.c文件  
 -- 具体详见：https://github.com/jingge815/Cinnamon/blob/feature/develop-compiler/install.md  
 -- cd cinm-app-example-umm-va/  
 -- ./build.sh  
+
+-- 向量乘法实例
+-- cd ../cinm-app-example-umm-mv/  
+-- ./build.sh  
+
+
 
 
 
