@@ -14,7 +14,7 @@ fi
 
 time build/dmmBS 5242880 640 build/devApp/objdumps/BS.objdump
 time build/dmmCOMPACT 15728640 2560 build/devApp/objdumps/COMPACT.objdump
-time build/dmmHST 7864320 1280 build/devApp/objdumps/HST.objdump
+time build/dmmHST 31457280 1280 build/devApp/objdumps/HST.objdump
 time build/dmmGEMV 10240 2048 build/devApp/objdumps/GEMV.objdump
 time build/dmmMLP 1024 1024 build/devApp/objdumps/MLP.objdump
 time build/dmmNW 2000 1000 64 build/devApp/objdumps/NW.objdump
@@ -30,7 +30,7 @@ time build/dmmVA 15728640 2560 build/devApp/objdumps/VA.objdump
 
 time build/dmmBS 5242880 640 build/devApp/rvbins/BS
 time build/dmmCOMPACT 15728640 2560 build/devApp/rvbins/COMPACT
-time build/dmmHST 7864320 1280 build/devApp/rvbins/HST
+time build/dmmHST 31457280 1280 build/devApp/rvbins/HST
 time build/dmmGEMV 10240 2048 build/devApp/rvbins/GEMV
 time build/dmmMLP 1024 1024 build/devApp/rvbins/MLP
 time build/dmmNW 2000 1000 64 build/devApp/rvbins/NW

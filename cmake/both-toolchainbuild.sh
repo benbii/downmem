@@ -40,7 +40,7 @@ cmake -GNinja -S llvm -B build "-DCMAKE_INSTALL_PREFIX=$1" \
   -DCMAKE_CXX_FLAGS='-march=native -pipe' \
   -DCMAKE_{SHARED,EXE}_LINKER_FLAGS='-Wl,--undefined-version' \
   -DLLVM_TARGETS_TO_BUILD='X86;DPU;RISCV' \
-  -DLLVM_ENABLE_PROJECTS="${4:-clang;lld;openmp}" \
+  -DLLVM_ENABLE_PROJECTS="${4:-llvm;clang;lld;openmp}" \
   -DLLVM_ENABLE_PLUGINS=ON -DLLVM_ENABLE_FFI=yes \
   -DLLVM_ENABLE_LIBEDIT=yes -DLLVM_ENABLE_LIBXML2=yes \
   -DLLVM_ENABLE_EH=ON -DLLVM_ENABLE_RTTI=ON \
@@ -83,15 +83,15 @@ if ! tar xf cmake/dpu-rt.tar.zst; then
   rm cmake/dpu-rt.tar
 fi
 cmake -GNinja -DCMAKE_BUILD_TYPE=Release -Sdpu-rt -Bdpu-rt/build \
-  "-DCMAKE_C_COMPILER=$1/bin/clang" "-DCMAKE_INSTALL_PREFIX=$1"
-ninja -C dpu-rt/build "-j$(nproc)" install
+  "-DCMAKE_C_COMPILER=$1/bin/clang" "-DCMAKE_INSTALL_PREFIX=$1"  "-Dtools=$1/bin"
+ninja -C dpu-rt/build install
 rm -r dpu-rt build || true
 
 # downmem and rvupmem-rt
 cmake -GNinja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release \
-  -S. -Bbuild "-DCMAKE_C_COMPILER=$1/bin/clang" "-DCMAKE_INSTALL_PREFIX=$1" 
-ninja -C build -j16 install
-ninja -C build -j16 dpuExamples
+  -S. -Bbuild "-DCMAKE_C_COMPILER=$1/bin/clang" "-DCMAKE_INSTALL_PREFIX=$1"
+ninja -C build install
+ninja -C build dpuExamples
 
 bash runTests.sh "$1"
 
