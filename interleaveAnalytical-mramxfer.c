@@ -285,6 +285,7 @@ static void extract8Bank(const uint64_t *src, uint64_t* destAddrs[8],
   }
 }
 
+#ifdef __DMM_XFERTBL_MAIN
 void DmmPrintMramXferTbl(FILE *out, size_t nthrd, long ty) {
   uint64_t *a = aligned_alloc(64, 33554432 * 8);
   uint64_t *b = aligned_alloc(64, 33554432 * 8);
@@ -339,7 +340,6 @@ void DmmPrintMramXferTbl(FILE *out, size_t nthrd, long ty) {
   free(a); free(b);
 }
 
-#ifdef __DMM_XFERTBL_MAIN
 int main(int ac, char **av) {
   size_t nthreads = atol(av[1]);
   long ty = atol(av[2]);

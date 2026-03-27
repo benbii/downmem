@@ -65,7 +65,7 @@ dpu_error_t dpu_alloc(uint32_t nrDpu, const char *_, struct dpu_set_t *set) {
   }
   set->begin = 0; set->end = nrDpu;
   for (size_t i = 0; i < nrDpu; ++i)
-    set->dmm_dpu[i].Is = 0;
+    set->dmm_dpu[i].Is = UNINIT_DPUIS;
   return DPU_OK;
 }
 dpu_error_t dpu_alloc_ranks(uint32_t nrRank, const char *_,
