@@ -37,7 +37,6 @@ typedef enum {
 #define RV_JALR      0x67
 #define RV_JAL       0x6F
 #define RV_SYSTEM    0x73
-#define RV_CUSTOM_0  0x0B
 
 // --- Bit field extraction macros ---
 #define OPCODE(x)    ((x) & 0x7F)
@@ -105,7 +104,7 @@ static RvInstr rvdecode(uint32_t encoded) {
         default: goto die;
       }
       break;
-      
+
     case RV_LOAD:
       instr.imm = __immi(encoded);
       switch (funct3) {
@@ -117,7 +116,7 @@ static RvInstr rvdecode(uint32_t encoded) {
         default: goto die;
       }
       break;
-      
+
     case RV_STORE:
       instr.imm = __imms(encoded);
       switch (funct3) {
@@ -127,7 +126,7 @@ static RvInstr rvdecode(uint32_t encoded) {
         default: goto die;
       }
       break;
-      
+
     case RV_OP_IMM:
       instr.imm = __immi(encoded);
       switch (funct3) {
@@ -137,13 +136,13 @@ static RvInstr rvdecode(uint32_t encoded) {
         case 0x4: instr.Opcode = XORI; break;
         case 0x6: instr.Opcode = ORI; break;
         case 0x7: instr.Opcode = ANDI; break;
-        case 0x1: 
+        case 0x1:
           // SLLI and Zbb unary bit manipulation instructions
           if (funct7 == 0x00) instr.Opcode = SLLI;
           else if (funct7 == 0x30) {
             // Zbb unary instructions using OP_IMM encoding
             if (instr.rs2 == 0) instr.Opcode = CLZr;       // clz
-            else if (instr.rs2 == 1) instr.Opcode = CTZ;  // ctz  
+            else if (instr.rs2 == 1) instr.Opcode = CTZ;  // ctz
             else if (instr.rs2 == 2) instr.Opcode = CPOP; // cpop
             else goto die;
           }
@@ -158,7 +157,7 @@ static RvInstr rvdecode(uint32_t encoded) {
         default: goto die;
       }
       break;
-      
+
     case RV_OP:
       switch (funct7) {
         case 0x00:
@@ -211,7 +210,7 @@ static RvInstr rvdecode(uint32_t encoded) {
         case 0x30:
           // RV32B Zbb: Bit manipulation instructions
           switch (funct3) {
-            case 0x1: 
+            case 0x1:
               // CLZ, CTZ, CPOP (unary operations using rs2 to distinguish)
               if (instr.rs2 == 0) instr.Opcode = CLZr;       // clz
               else if (instr.rs2 == 1) instr.Opcode = CTZ;  // ctz
@@ -219,7 +218,7 @@ static RvInstr rvdecode(uint32_t encoded) {
               else instr.Opcode = ROLr;                      // rol (binary operation, default)
               break;
             case 0x4: instr.Opcode = SEXT_B; break;       // sext.b
-            case 0x5: 
+            case 0x5:
               if (instr.rs2 == 5) instr.Opcode = SEXT_H;    // sext.h (unary)
               else if (instr.rs2 == 4) instr.Opcode = ZEXT_H; // zext.h (unary)
               else instr.Opcode = RORr;                      // ror (binary operation)
@@ -238,11 +237,11 @@ static RvInstr rvdecode(uint32_t encoded) {
         default: goto die;
       }
       break;
-      
+
     case RV_MISC_MEM:
       if (funct3 == 0x0) instr.Opcode = FENCE;
       else goto die;
-      
+
     case RV_SYSTEM:
       if (encoded == 0x73) instr.Opcode = ECALL;
       else if (encoded == 0x100073) instr.Opcode = EBREAK;
@@ -260,20 +259,6 @@ static RvInstr rvdecode(uint32_t encoded) {
         }
       }
       break;
-      
-    case RV_CUSTOM_0:
-      // Custom DPU instructions with special encoding
-      instr.rs2 = SIZE_FIELD(encoded);
-      switch (funct3) {
-        case 0x0: instr.Opcode = MYID; break;
-        // LDMRAM: wramAddr=rs1[19:15], mramAddr=rd[11:7], size=custom[26:22]
-        case 0x1: instr.Opcode = LDMRAM; break;
-        // SDMRAM: wramAddr=rs1[19:15], mramAddr=rd[11:7], size=custom[26:22]
-        case 0x2: instr.Opcode = SDMRAM; break;
-        default: goto die;
-      }
-      break;
-      
     default: goto die;
   }
 

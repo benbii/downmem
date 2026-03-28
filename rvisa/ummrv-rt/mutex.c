@@ -5,11 +5,11 @@
 // CSR manipulation helpers for sleep mutex control (CSR2)
 static inline uint32_t csr2_test_and_set(uint32_t mask) {
   uint32_t prev;
-  __asm__ volatile("csrrs %0, 0x002, %1" : "=r"(prev) : "r"(mask));
+  __asm__ volatile("csrrs %0, 0x802, %1" : "=r"(prev) : "r"(mask));
   return prev;
 }
 static inline void csr2_clear(uint32_t mask) {
-  __asm__ volatile("csrrc zero, 0x002, %0" : : "r"(mask));
+  __asm__ volatile("csrrc zero, 0x802, %0" : : "r"(mask));
 }
 
 void sleepmutex_lock(sleepmtx_t *mtx) {
@@ -51,7 +51,7 @@ void sleepmutex_unlock(sleepmtx_t *mtx) {
     csr2_clear(msk);
     // Wake the next thread and ensure it actually sleeps if still running
     uint32_t prev_running;
-    __asm__ volatile("csrrs %0, 0x000, %1"
+    __asm__ volatile("csrrs %0, 0x800, %1"
                      : "=r"(prev_running)
                      : "r"(wake_bit));
     // If thread was still running, keep trying to wake it
@@ -59,7 +59,7 @@ void sleepmutex_unlock(sleepmtx_t *mtx) {
       // Small delay to let thread actually sleep
       __asm__ volatile("addi x0, x0, 0");
       // Try waking again
-      __asm__ volatile("csrrs %0, 0x000, %1"
+      __asm__ volatile("csrrs %0, 0x800, %1"
                        : "=r"(prev_running)
                        : "r"(wake_bit));
     }

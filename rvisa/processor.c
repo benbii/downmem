@@ -22,7 +22,7 @@ void RvDpuRun(RvDpu* d, size_t nrTasklets) {
     d->Timing.Threads[i].Pc = IramBeginR;
   // Clear blocked bits and set running bits for all threads
   d->Timing.Csr[0] = (1 << nrTasklets) - 1;
-  d->Timing.Csr[AtomicSizeR - 1] = 0;
+  d->Timing.Csr[NrCsr - 1] = 0;
 
   uint32_t running = true;
   while (running) {
@@ -66,7 +66,8 @@ void RvDpuExecuteInstr(RvDpu* d, RvTlet* thread) {
   case SLT: result = (int32_t)vs1 < (int32_t)vs2 ? 1 : 0; break;
   case SLTU: result = vs1 < vs2 ? 1 : 0; break;
 
-  // RV32M: Multiplication & Division
+  // RV32M: Multiplication & Division placeholder;
+  // the hardware cannot finish mul & div in 1 single cycle :D
   case MUL: result = vs1 * vs2; break;
   case MULH:
     result = ((int64_t)(int32_t)vs1 * (int64_t)(int32_t)vs2 >> 32); break;
@@ -74,7 +75,7 @@ void RvDpuExecuteInstr(RvDpu* d, RvTlet* thread) {
     result = ((int64_t)(int32_t)vs1 * (uint64_t)vs2) >> 32; break;
   case MULHU:
     result = (uint64_t)vs1 * (uint64_t)vs2 >> 32; break;
-  case DIV: 
+  case DIV:
     if (vs2 == 0) result = -1;
     else if (vs1 == 0x80000000 && vs2 == 0xFFFFFFFF) result = 0x80000000;
     else result = (int32_t)vs1 / (int32_t)vs2;
@@ -189,51 +190,43 @@ void RvDpuExecuteInstr(RvDpu* d, RvTlet* thread) {
   case FENCE: rd = 0; break;
 
   // CSR instructions (use DPU CSR array, imm contains CSR address)
-  case CSRRW:
-    result = d->Timing.Csr[imm % AtomicSizeR];
-    d->Timing.Csr[imm % AtomicSizeR] = vs1; break;
   case CSRRS:
-    result = d->Timing.Csr[imm % AtomicSizeR];
-    d->Timing.Csr[imm % AtomicSizeR] |= vs1; break;
+    result = d->Timing.Csr[imm % NrCsr];
+    d->Timing.Csr[imm % NrCsr] |= vs1; break;
   case CSRRC:
-    result = d->Timing.Csr[imm % AtomicSizeR];
-    d->Timing.Csr[imm % AtomicSizeR] &= ~vs1; break;
+    result = d->Timing.Csr[imm % NrCsr];
+    d->Timing.Csr[imm % NrCsr] &= ~vs1; break;
   case CSRRWI:
-    result = d->Timing.Csr[imm % AtomicSizeR];
-    d->Timing.Csr[imm % AtomicSizeR] = instr->rs1; break;
-  case CSRRSI:
-    result = d->Timing.Csr[imm % AtomicSizeR];
-    d->Timing.Csr[imm % AtomicSizeR] |= instr->rs1; break;
+    result = d->Timing.Csr[imm % NrCsr];
+    d->Timing.Csr[imm % NrCsr] = instr->rs1; break;
   case CSRRCI:
-    result = d->Timing.Csr[imm % AtomicSizeR];
-    d->Timing.Csr[imm % AtomicSizeR] &= ~instr->rs1; break;
+    result = d->Timing.Csr[imm % NrCsr];
+    d->Timing.Csr[imm % NrCsr] &= ~instr->rs1; break;
 
-  // Custom DPU instructions
-  case MYID: result = thread->Id; break;
-  case LDMRAM: {
-    uint32_t wram_addr = vs1 & WramMaskR;
-    uint32_t mram_addr = (thread->Regs[instr->rd] - MramBeginR) & MramMaskR;
-    uint32_t size = vs2;
-    assert(wram_addr + size <= WramSizeR && mram_addr + size <= MramSizeR);
-    memcpy(wm + wram_addr, wm + WramSizeR + mram_addr, size);
-    rd = 0;
-    break;
-  }
-  case SDMRAM: {
-    uint32_t wram_addr = vs1 & WramMaskR;
-    uint32_t mram_addr = (thread->Regs[instr->rd] - MramBeginR) & MramMaskR;
-    uint32_t size = vs2;
-    assert(wram_addr + size <= WramSizeR && mram_addr + size <= MramSizeR);
-    memcpy(wm + WramSizeR + mram_addr, wm + wram_addr, size);
-    rd = 0;
-    break;
-  }
-
-  default:
-    fprintf(stderr, "Unsupported opcode: %d\n", instr->Opcode);
+  // special operations involving CSRRSI and CSRRW
+  case CSRRSI:
+    imm %= NrCsr;
+    result = d->Timing.Csr[imm];
+    if (imm == 20) result = thread->Id;
+    if (imm == 0) result = d->Timing.StatNrCycle;
+    if (imm == 2) result = d->Timing.StatNrInstrExec;
+    d->Timing.Csr[imm] |= instr->rs1; break;
+  case CSRRW:
+    imm %= NrCsr;
+    if (imm != 3) {
+      result = d->Timing.Csr[imm];
+      d->Timing.Csr[imm] = vs1;
+      break; // from hardware standpoint no "break" is more suitable
+    }
+    uint8_t *wram_addr = wm + (vs1 >> 16);
+    uint8_t *mram_addr =
+        wm + WramSizeR + (thread->Regs[instr->rd] - MramBeginR & MramMaskR);
+    memcpy((vs1 & 32768) ? mram_addr : wram_addr,
+           (vs1 & 32768) ? wram_addr : mram_addr, vs1 & 32767);
     rd = 0; break;
-  }
 
+  default: __builtin_unreachable();
+  }
   // Write result back to rd (unless it's x0 or instruction doesn't write)
   if (rd != 0) thread->Regs[rd] = result;
 }

@@ -34,7 +34,7 @@ bool sleepmutex_trylock(sleepmtx_t* mtx);
 // CSR manipulation helpers for spinlock control (CSR1)
 static inline uint32_t csr1_test_and_set(uint32_t mask) {
   uint32_t prev;
-  __asm__ volatile("csrrs %0, 0x001, %1" : "=r"(prev) : "r"(mask));
+  __asm__ volatile("csrrs %0, 0x801, %1" : "=r"(prev) : "r"(mask));
   return prev;
 }
 
@@ -45,7 +45,7 @@ static inline void mutex_lock(mtx_t msk) {
 }
 
 static inline void mutex_unlock(mtx_t msk) {
-  __asm__ volatile("csrrc zero, 0x001, %0" : : "r"(msk));
+  __asm__ volatile("csrrc zero, 0x801, %0" : : "r"(msk));
 }
 
 static inline bool mutex_trylock(mtx_t msk) {

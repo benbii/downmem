@@ -1,4 +1,5 @@
 #include "dmminternal.h"
+#include <assert.h>
 #include <stdio.h>
 
 static void servePipeline(RvTiming *this) {
@@ -34,9 +35,6 @@ static void serveCycleRule(RvTiming *this) {
     // Add read registers (rs1, rs2) - all are single 32-bit registers
     curRead |= (1ull << instr->rs1);
     curRead |= (1ull << instr->rs2);
-    // Custom DPU instructions may read rd
-    if (op == LDMRAM || op == SDMRAM)
-        curRead |= (1ull << instr->rd);
     // Include previous write register conflicts
     curRead |= this->CrPrevWriteRegSets[thread_id];
     // RISC-V register binning: r0 excluded
@@ -125,11 +123,12 @@ RvTlet *RvTimingCycle(RvTiming *this, size_t nrTasklets) {
       this->PpInId = thread->Id;
 
       // Handle RISC-V custom DMA instructions (LDMRAM, SDMRAM)
-      if (instr->Opcode == LDMRAM || instr->Opcode == SDMRAM) {
+      if (instr->Opcode == CSRRW && instr->imm == 0x803) {
         // Extract DMA parameters from registers
-        uint32_t wram_addr = thread->Regs[instr->rd] & WramMaskR;
-        uint32_t mram_addr = (thread->Regs[instr->rs1] - MramBeginR) & MramMaskR;
-        uint32_t size = thread->Regs[instr->rs2];
+        uint32_t wram_addr = thread->Regs[instr->rs1] >> 16;
+        uint32_t mram_addr = (thread->Regs[instr->rd] - MramBeginR) & MramMaskR;
+        uint32_t size = thread->Regs[instr->rs1] & 32767;
+        assert(wram_addr + size <= WramSizeR && mram_addr + size <= MramSizeR);
         if (size > 0) {
           // Push DMA request to MRAM timing simulator
           DmmMramTimingPush(&this->MramTiming, mram_addr, size, thread->Id);

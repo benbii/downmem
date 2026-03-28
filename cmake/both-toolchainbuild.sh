@@ -11,7 +11,7 @@ git checkout llvmorg-15.0.7
 zstd -d "$MYDIR/upmem-llvm.patch.zst"
 git apply "$MYDIR/upmem-llvm.patch"
 rm "$MYDIR/upmem-llvm.patch"
-git apply "$MYDIR/rvupmem-llvm15.patch"
+# git apply "$MYDIR/rvupmem-llvm15.patch"
 
 # Need clang to compile clang's various components :)
 C=$3

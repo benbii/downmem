@@ -3,25 +3,13 @@ find_package(OpenMP REQUIRED)
 @PACKAGE_INIT@
 
 include("${CMAKE_CURRENT_LIST_DIR}/DmmTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/DmmDeviceHelpers.cmake")
 
-# Helper functions for building DPU applications
-
-# rvbin_make(TARGET NR_TASKLETS [EXTRA_FLAGS])
-function(rvbin_make TARGET NR_TASKLETS)
-  set(EXTRA_FLAGS ${ARGN})
-  # Common RISC-V compile flags (without optimization flags)
-  set(RISCV_COMMON_FLAGS --target=riscv32 -DNR_TASKLETS=${NR_TASKLETS} -mcpu=umm -fno-builtin)
-  # Apply compile and link options
-  target_compile_options(${TARGET} PRIVATE ${RISCV_COMMON_FLAGS} ${EXTRA_FLAGS})
-  target_link_options(${TARGET} PRIVATE ${RISCV_COMMON_FLAGS} ${EXTRA_FLAGS})
-  # Extract program name from target (strip rv prefix if present)
-  string(REPLACE "rv" "" PROGRAM_NAME ${TARGET})
-  # Set target properties
-  set_target_properties(${TARGET} PROPERTIES
-            OUTPUT_NAME ${PROGRAM_NAME}
-            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/rvbins
-  )
-endfunction()
+set(DMM_RV @DMM_RV@)
+set(DMM_RV_RUNTIME_INCLUDE_DIR "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@/dmm/rv32")
+set(DMM_RV_RUNTIME_LIBRARY_DIR "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/dmm/rv32")
+set(DMM_RV_RUNTIME_LINKER_SCRIPT "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/dmm/rv32/device.ld")
+set(DMM_RV_RUNTIME_CRT0_OBJECT "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/dmm/rv32/crt0.o")
 
 # upmembin_make(TARGET NR_TASKLETS [EXTRA_FLAGS])
 function(upmembin_make TARGET NR_TASKLETS)

@@ -14,7 +14,7 @@ enum {
   MramMaskR       = 0x07ffffff,
   MramBeginR      = 0x08000000,
   MramSizeR       = 64 * 1024 * 1024,
-  AtomicSizeR     = 32,
+  NrCsr     = 32,
   // RISC-V has 32 general-purpose registers (x0-x31)
   NumGpRegistersR = 32,
   IramBeginR      = 0x80000000,
@@ -49,8 +49,6 @@ typedef enum {
   ECALL, EBREAK,
   // CSR instructions
   CSRRW, CSRRS, CSRRC, CSRRWI, CSRRSI, CSRRCI,
-  // Custom DPU instructions
-  MYID, LDMRAM, SDMRAM,
   // Fence (for memory ordering)
   FENCE,
   // Unknown/Invalid
@@ -97,7 +95,7 @@ typedef struct RvTiming {
   RvInstr *Iram;
   double FreqRatio;
   DmmMramTiming MramTiming;
-  uint32_t Csr[AtomicSizeR];    // 32 CSR words for atomic operations
+  uint32_t Csr[NrCsr];    // 32 CSR words for atomic operations
 
   // Pipeline state (simplified for RISC-V)
   RvInstr* PpInInstr;

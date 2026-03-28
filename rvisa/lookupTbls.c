@@ -24,7 +24,7 @@ const char* RvOpStr[RvNrOpcode] = {
   [LBr] = "lb", [LHr] = "lh", [LWr] = "lw", [LBUr] = "lbu", [LHUr] = "lhu",
   [SBr] = "sb", [SHr] = "sh", [SWr] = "sw",
   // Branches
-  [BEQ] = "beq", [BNE] = "bne", [BLT] = "blt", [BGE] = "bge", 
+  [BEQ] = "beq", [BNE] = "bne", [BLT] = "blt", [BGE] = "bge",
   [BLTU] = "bltu", [BGEU] = "bgeu",
   // Jumps
   [JAL] = "jal", [JALR] = "jalr",
@@ -33,8 +33,6 @@ const char* RvOpStr[RvNrOpcode] = {
   // CSR instructions
   [CSRRW] = "csrrw", [CSRRS] = "csrrs", [CSRRC] = "csrrc",
   [CSRRWI] = "csrrwi", [CSRRSI] = "csrrsi", [CSRRCI] = "csrrci",
-  // Custom DPU instructions
-  [MYID] = "myid", [LDMRAM] = "ldmram", [SDMRAM] = "sdmram",
   // Fence
   [FENCE] = "fence",
 };
@@ -75,10 +73,6 @@ const uint8_t RvNeedRw[RvNrOpcode] = {
   // CSR instructions (read rs1, write rd)
   [CSRRW] = 5, [CSRRS] = 5, [CSRRC] = 5,
   [CSRRWI] = 4, [CSRRSI] = 4, [CSRRCI] = 4,  // Immediate variants: no rs1
-  // Custom DPU instructions
-  [MYID] = 4,    // No reads, write rd
-  [LDMRAM] = 7,  // Read rs1(wramAddr)+rd(mramAddr)+rs2(size), no rd write
-  [SDMRAM] = 7,  // Read rs1(wramAddr)+rd(mramAddr)+rs2(size), no rd write
   // Fence (no register access)
   [FENCE] = 0,
 };

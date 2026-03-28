@@ -1,7 +1,8 @@
+#include <assert.h>
 #include <dpu.h>
 #include <stdlib.h>
-#include <assert.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef __clang__
 #define rotl64c __builtin_rotateleft64
@@ -78,7 +79,7 @@ int main(int argc, char** argv) {
   uint32_t* inputs = malloc(totWords * sizeof(uint64_t));
   uint32_t* hostRes = malloc(totWords * sizeof(uint64_t));
   uint32_t* devRes = malloc(totWords * sizeof(uint64_t));
-  srand(12345678);
+  srand(time(NULL));
   for (size_t i = 0; i < totWords; ++i) {
     switch (i & 7) {
     case 0: case 1: case 3: case 4:

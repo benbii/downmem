@@ -5,18 +5,18 @@
 // CSR2 manipulation helpers for barrier metadata locking (shared with spinlock)
 static inline uint32_t csr2_test_and_set(uint32_t mask) {
     uint32_t prev;
-    __asm__ volatile ("csrrs %0, 0x002, %1" : "=r"(prev) : "r"(mask));
+    __asm__ volatile ("csrrs %0, 0x802, %1" : "=r"(prev) : "r"(mask));
     return prev;
 }
 
 static inline void csr2_clear(uint32_t mask) {
-    __asm__ volatile ("csrrc zero, 0x002, %0" : : "r"(mask));
+    __asm__ volatile ("csrrc zero, 0x802, %0" : : "r"(mask));
 }
 
 // CSR3 manipulation for known thread barriers (dedicated CSR word)
 static inline uint32_t csr3_test_and_set(uint32_t mask) {
     uint32_t prev;
-    __asm__ volatile ("csrrs %0, 0x003, %1" : "=r"(prev) : "r"(mask));
+    __asm__ volatile ("csrrs %0, 0x808, %1" : "=r"(prev) : "r"(mask));
     return prev;
 }
 
@@ -40,7 +40,7 @@ void barrier_wait(barrier_t *barrier) {
     csr2_clear(msk);
     // Wake up all sleeping threads and check they were all actually sleeping
     uint32_t prev_running;
-    __asm__ volatile("csrrs %0, 0x000, %1"
+    __asm__ volatile("csrrs %0, 0x800, %1"
                      : "=r"(prev_running) : "r"(wake_mask));
     // Check if some threads haven't slept yet (were still running)
     uint32_t still_running = prev_running & expected_mask;
@@ -49,7 +49,7 @@ void barrier_wait(barrier_t *barrier) {
       // Small delay to let threads actually sleep
       __asm__ volatile("addi x0, x0, 0");
       // Try waking the stragglers again
-      __asm__ volatile("csrrs %0, 0x000, %1"
+      __asm__ volatile("csrrs %0, 0x800, %1"
                        : "=r"(prev_running) : "r"(still_running));
       still_running = prev_running & still_running;
     }
@@ -73,15 +73,15 @@ void known_barrier_wait(uint32_t thread_mask) {
   // Check if we were the last thread (our bit was the only one not set)
   if (thread_mask == (prev | my_bit)) {
     // Reinitialize for next use
-    __asm__ volatile("csrrwi x0, 0x003, 0");
+    __asm__ volatile("csrrwi x0, 0x808, 0");
     uint32_t to_wake = prev, wake_result;
     // Wake all sleeping threads
-    __asm__ volatile("csrrs %0, 0x000, %1" : "=r"(wake_result) : "r"(to_wake));
+    __asm__ volatile("csrrs %0, 0x800, %1" : "=r"(wake_result) : "r"(to_wake));
     uint32_t still_running = wake_result & to_wake;
     // Check if some threads haven't slept yet
     while (still_running) {
       // Keep waking threads that were still running
-      __asm__ volatile("csrrs %0, 0x000, %1" : "=r"(wake_result) : "r"(still_running));
+      __asm__ volatile("csrrs %0, 0x800, %1" : "=r"(wake_result) : "r"(still_running));
       still_running = wake_result & still_running;
     }
   } else {

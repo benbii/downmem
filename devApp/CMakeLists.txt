@@ -3,26 +3,11 @@
 # Create a meta-target to build all DPU examples
 add_custom_target(dpuExamples)
 
+include(${PROJECT_SOURCE_DIR}/cmake/DmmDeviceHelpers.cmake)
+
 # =================================================================
 # RISC-V DPU applications
 # =================================================================
-
-# rvbin_make(TARGET NR_TASKLETS [EXTRA_FLAGS])
-function(rvbin_make TARGET NR_TASKLETS)
-  set(EXTRA_FLAGS ${ARGN})
-  # Common RISC-V compile flags (without optimization flags)
-  set(RISCV_COMMON_FLAGS --target=riscv32 -DNR_TASKLETS=${NR_TASKLETS} -mcpu=umm -fno-builtin)
-  # Apply compile and link options
-  target_compile_options(${TARGET} PRIVATE ${RISCV_COMMON_FLAGS} ${EXTRA_FLAGS})
-  target_link_options(${TARGET} PRIVATE ${RISCV_COMMON_FLAGS} ${EXTRA_FLAGS})
-  # Extract program name from target (strip rv prefix if present)
-  string(REPLACE "rv" "" PROGRAM_NAME ${TARGET})
-  # Set target properties
-  set_target_properties(${TARGET} PROPERTIES
-            OUTPUT_NAME ${PROGRAM_NAME}
-            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/rvbins
-  )
-endfunction()
 
 if(DMM_RV)
   foreach(G NW SCAN TS)
@@ -87,4 +72,3 @@ if(DMM_UPMEM)
     add_dependencies(dpuExamples umm${A})
   endforeach()
 endif()
-

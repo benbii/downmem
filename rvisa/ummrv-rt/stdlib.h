@@ -40,7 +40,7 @@ static inline void exit(int status) {
 	register uint32_t thread_id;
 	__asm__ volatile("myid %0" : "=r"(thread_id));
 	register uint32_t mask = 1U << thread_id;
-	__asm__ volatile("csrrc zero, 0x000, %0" : : "r"(mask), "r"(a0));
+	__asm__ volatile("csrrc zero, 0x800, %0" : : "r"(mask), "r"(a0));
 	__builtin_unreachable();
 }
 
