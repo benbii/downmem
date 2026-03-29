@@ -6,45 +6,33 @@ mkdir -p "$1"
 cd "$2"
 git reset --hard HEAD
 git clean -fd
-git checkout llvmorg-20.1.8
+git checkout llvmorg-22.1.2
 
-# Need clang to compile clang's various components :)
-C=$3
+C=$3; CXX="$3++"; L="-DLLVM_ENABLE_LLD=ON -DLLVM_ENABLE_LTO=Thin"
 rm -r build || true
-if ! which "$3"; then
-  cmake -GNinja -S llvm -B build "-DCMAKE_INSTALL_PREFIX=$1/scratch" \
-    -DLLVM_BUILD_LLVM_DYLIB=ON -DLLVM_LINK_LLVM_DYLIB=ON \
-    -DLLVM_RAM_PER_LINK_JOB=5500 \
-    -DCMAKE_C_FLAGS='-march=native -pipe' \
-    -DCMAKE_CXX_FLAGS='-march=native -pipe' \
-    -DLLVM_TARGETS_TO_BUILD='X86;RISCV' \
-    -DLLVM_ENABLE_PROJECTS='clang;lld' \
-    -DLLVM_HOST_TRIPLE=x86_64-pc-linux-gnu -DCMAKE_BUILD_TYPE=Release
-  ninja -C build install
-  rm -r build
-  C="$1/scratch/bin/clang"
+if ! which "$C" "$CXX"; then
+  C=gcc; CXX=g++; L=
 fi
 
 cmake -GNinja -S llvm -B build "-DCMAKE_INSTALL_PREFIX=$1" \
-  -DCMAKE_C_COMPILER="$C" -DCMAKE_CXX_COMPILER="$C++" \
-  -DLLVM_ENABLE_LLD=ON -DLLVM_ENABLE_LTO=Thin \
+  -DCMAKE_C_COMPILER="$C" -DCMAKE_CXX_COMPILER="$CXX" $L \
   -DLLVM_BUILD_LLVM_DYLIB=ON -DLLVM_LINK_LLVM_DYLIB=ON \
   -DLLVM_RAM_PER_LINK_JOB=5500 \
   -DCMAKE_C_FLAGS='-march=native -pipe' \
   -DCMAKE_CXX_FLAGS='-march=native -pipe' \
   -DLLVM_TARGETS_TO_BUILD='X86;RISCV' \
-  -DLLVM_ENABLE_PROJECTS="${4:-llvm;clang;lld;openmp}" \
   -DLLVM_ENABLE_PLUGINS=ON -DLLVM_ENABLE_FFI=yes \
   -DLLVM_ENABLE_LIBEDIT=yes -DLLVM_ENABLE_LIBXML2=yes \
   -DLLVM_ENABLE_EH=ON -DLLVM_ENABLE_RTTI=ON -DLLVM_INSTALL_UTILS=ON \
   -DLLVM_ENABLE_ZLIB=ON -DLLVM_ENABLE_ZSTD=ON \
-  -DLLVM_HOST_TRIPLE=x86_64-pc-linux-gnu -DCMAKE_BUILD_TYPE=Release
+  -DLLVM_HOST_TRIPLE=x86_64-pc-linux-gnu -DCMAKE_BUILD_TYPE=Release \
+  -DLLVM_ENABLE_PROJECTS="${4:-llvm;clang;lld;openmp}" #"
 ninja -C build install
-rm -r "$1/scratch" || true
 
 mkdir -p build/crtrv32 && cd build/crtrv32
 cmake -S ../../compiler-rt -B. -GNinja \
   -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
   "-DLLVM_CONFIG_PATH=$1/bin/llvm-config" \
   "-DCMAKE_C_COMPILER=$1/bin/clang" \
   "-DCMAKE_CXX_COMPILER=$1/bin/clang++" \
@@ -54,6 +42,7 @@ cmake -S ../../compiler-rt -B. -GNinja \
   -DCMAKE_C_FLAGS="-march=rv32im_zbb -nostdlib" \
   -DCMAKE_CXX_FLAGS="-march=rv32im_zbb -nostdlib" \
   -DCMAKE_ASM_FLAGS="-march=rv32im_zbb -nostdlib" \
+  "-DLLVM_USE_LINKER=$1/bin/ld.lld" \
   -DCOMPILER_RT_BUILD_BUILTINS=ON \
   -DCOMPILER_RT_BUILD_SANITIZERS=OFF \
   -DCOMPILER_RT_BUILD_XRAY=OFF \
@@ -63,11 +52,11 @@ cmake -S ../../compiler-rt -B. -GNinja \
   -DCOMPILER_RT_OS_DIR="baremetal" \
   -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON \
   -DCMAKE_INSTALL_PREFIX="$1" \
-  "-DCOMPILER_RT_INSTALL_PATH=$1/lib/clang/20"
+  "-DCOMPILER_RT_INSTALL_PATH=$1/lib/clang/22"
 ninja install
-mkdir -p "$1/lib/clang/20/lib/riscv32--"
-cp "$1/lib/clang/20/lib/baremetal/libclang_rt.builtins-riscv32.a" \
-  "$1/lib/clang/20/lib/riscv32--/libclang_rt.builtins-riscv32.a"
+mkdir -p "$1/lib/clang/22/lib/riscv32--"
+cp "$1/lib/clang/22/lib/baremetal/libclang_rt.builtins-riscv32.a" \
+  "$1/lib/clang/22/lib/riscv32--/libclang_rt.builtins-riscv32.a"
 
 cd "$MYDIR/.."
 rm -r build || true
