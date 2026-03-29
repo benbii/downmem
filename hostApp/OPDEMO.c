@@ -2,7 +2,6 @@
 #include <dpu.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #ifdef __clang__
 #define rotl64c __builtin_rotateleft64
@@ -79,13 +78,13 @@ int main(int argc, char** argv) {
   uint32_t* inputs = malloc(totWords * sizeof(uint64_t));
   uint32_t* hostRes = malloc(totWords * sizeof(uint64_t));
   uint32_t* devRes = malloc(totWords * sizeof(uint64_t));
-  srand(time(NULL));
+  srand(12345678);
   for (size_t i = 0; i < totWords; ++i) {
     switch (i & 7) {
     case 0: case 1: case 3: case 4:
-      inputs[i] = i; break;
+      inputs[i] = rand(); break;
     case 2: case 5: case 6: case 7:
-      inputs[i] = -i; break;
+      inputs[i] = -rand(); break;
     }
   }
 
@@ -127,10 +126,7 @@ int main(int argc, char** argv) {
   uint64_t* hostRes6 = (uint64_t*)hostRes;
   uint64_t* devRes6 = (uint64_t*)devRes;
   for (size_t i = 0; i < totWords; ++i) {
-    // int64_t val = ((i & 0x3fffffffll) << 30) + (i & 0x3fffffffll);
     int64_t val = ((rand() & 0x3fffffffll) << 30) + (rand() & 0x3fffffffll);
-    // int64_t val = i;
-    // inputs6[i] = (uint64_t)val;
     switch (i & 7) {
     case 0: case 1: case 3: case 4:
       inputs6[i] = val; break;
@@ -173,6 +169,7 @@ int main(int argc, char** argv) {
                      i, hostRes6[i], devRes6[i]));
   }
   dpu_free(dpuSet);
+  free(inputs); free(hostRes); free(devRes);
   return 0;
 }
 

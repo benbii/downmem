@@ -1,7 +1,6 @@
-#include <dpu.h>
-#include <math.h>
-#include <stdlib.h>
 #include <assert.h>
+#include <dpu.h>
+#include <stdlib.h>
 #include <string.h>
 
 static float demo32(float a, float b) {
@@ -67,12 +66,11 @@ int main(int argc, char** argv) {
   }
 
   dpu_broadcast_to(dpuSet, "nrWords", 0, &nrWords, sizeof(nrWords),
-                    DPU_XFER_DEFAULT);
+                   DPU_XFER_DEFAULT);
   dpu_broadcast_to(dpuSet, "nrIter", 0, &nrIter, sizeof(nrIter),
-                    DPU_XFER_DEFAULT);
+                   DPU_XFER_DEFAULT);
   const uint32_t bruh = 32;
-  dpu_broadcast_to(dpuSet, "is64", 0, &bruh, sizeof(nrIter),
-                    DPU_XFER_DEFAULT);
+  dpu_broadcast_to(dpuSet, "is64", 0, &bruh, sizeof(nrIter), DPU_XFER_DEFAULT);
   DPU_FOREACH(dpuSet, dpu, i) { dpu_prepare_xfer(dpu, inputs + nrWords * i); }
   dpu_push_xfer(dpuSet, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0,
                 nrWords * sizeof(float), DPU_XFER_DEFAULT);
@@ -84,7 +82,7 @@ int main(int argc, char** argv) {
   for (size_t i = 0; i < nrWords; ++i)
     if (devRes[i] / hostRes[i] > 1.01 || devRes[i] / hostRes[i] < .99)
       exit(fprintf(stderr, "32b FBAD at %zu, h=%f d=%f\n",
-                    i, hostRes[i], devRes[i]));
+                   i, hostRes[i], devRes[i]));
 
   double* inputs6 = (double*)inputs;
   double* hostRes6 = (double*)hostRes;

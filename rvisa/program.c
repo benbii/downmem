@@ -175,10 +175,12 @@ static RvInstr rvdecode(uint32_t encoded) {
           }
           break;
         case 0x20:
-          // SUB, SRA, and Zbb ANDN instruction
+          // SUB, SRA, and Zbb inverted-bitwise instructions
           switch (funct3) {
             case 0x0: instr.Opcode = SUBr; break;
+            case 0x4: instr.Opcode = XNOR; break;      // xnor
             case 0x5: instr.Opcode = SRA; break;
+            case 0x6: instr.Opcode = ORNr; break;      // orn
             case 0x7: instr.Opcode = ANDNr; break;     // andn
             default: goto die;
           }
@@ -223,14 +225,6 @@ static RvInstr rvdecode(uint32_t encoded) {
               else if (instr.rs2 == 4) instr.Opcode = ZEXT_H; // zext.h (unary)
               else instr.Opcode = RORr;                      // ror (binary operation)
               break;
-            default: goto die;
-          }
-          break;
-        case 0x40:
-          // RV32B Zbb: More bitwise operations
-          switch (funct3) {
-            case 0x6: instr.Opcode = ORNr; break;      // orn
-            case 0x4: instr.Opcode = XNOR; break;     // xnor
             default: goto die;
           }
           break;

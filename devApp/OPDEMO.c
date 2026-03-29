@@ -33,8 +33,6 @@ uint64_t demo64(uint64_t a, uint64_t b) {
   a = __builtin_rotateleft64(a, a & 31);
   b = __builtin_rotateright64(b, b & 31);
   return (a - b) ^ (qut + rem);
-  // return qut + rem;
-  // return a - b;
 }
 
 int main() {
@@ -45,28 +43,15 @@ int main() {
     __mram_ptr uint32_t *opM = DPU_MRAM_HEAP_POINTER + me() * tlNrBytes;
     __mram_ptr uint32_t *resM = opM + NR_TASKLETS * tlNrWords;
     uint32_t *bufW = (uint32_t *)bufW_;
-    // uint32_t *bufW = &wramBuf[512 / sizeof(uint32_t) * me()];
 
-    size_t i = 0;
-    // for (; i + 128 < tlNrWords; i += 128) {
-    //   mram_read(opM + i, bufW, 512);
-    //   for (size_t j = 0; j < 128; j += 2) {
-    //     uint32_t l = bufW[j], r = bufW[j + 1];
-    //     for (size_t k = 0; k < nrIter; ++k)
-    //       l = demo32(l, r), r = demo32(l, r);
-    //     bufW[j] = l, bufW[j + 1] = r;
-    //   }
-    //   mram_write(bufW, resM + i, 512);
-    // }
-
-    mram_read(opM + i, bufW, (tlNrWords - i) * sizeof(uint32_t));
-    for (size_t j = 0; j < tlNrWords - i; j += 2) {
+    mram_read(opM, bufW, tlNrWords * sizeof(uint32_t));
+    for (size_t j = 0; j < tlNrWords; j += 2) {
       uint32_t l = bufW[j], r = bufW[j + 1];
       for (size_t k = 0; k < nrIter; ++k)
         l = demo32(l, r), r = demo32(l, r);
       bufW[j] = l, bufW[j + 1] = r;
     }
-    mram_write(bufW, resM + i, (tlNrWords - i) * sizeof(uint32_t));
+    mram_write(bufW, resM, tlNrWords * sizeof(uint32_t));
     return 0;
   }
 
@@ -77,26 +62,14 @@ int main() {
   __mram_ptr uint64_t *resM = opM + NR_TASKLETS * tlNrWords;
   uint64_t *bufW = (uint64_t *)bufW_;
 
-  size_t i = 0;
-  // for (; i + 64 < tlNrWords; i += 64) {
-  //   mram_read(opM + i, bufW, 512);
-  //   for (size_t j = 0; j < 64; j += 2) {
-  //     uint64_t l = bufW[j], r = bufW[j + 1];
-  //     for (size_t k = 0; k < nrIter; ++k)
-  //       l = demo64(l, r), r = demo64(l, r);
-  //     bufW[j] = l, bufW[j + 1] = r;
-  //   }
-  //   mram_write(bufW, resM + i, 512);
-  // }
-
-  mram_read(opM + i, bufW, (tlNrWords - i) * sizeof(uint64_t));
-  for (size_t j = 0; j < tlNrWords - i; j += 2) {
+  mram_read(opM, bufW, tlNrWords * sizeof(uint64_t));
+  for (size_t j = 0; j < tlNrWords; j += 2) {
     uint64_t l = bufW[j], r = bufW[j + 1];
     for (size_t k = 0; k < nrIter; ++k)
       l = demo64(l, r), r = demo64(l, r);
     bufW[j] = l, bufW[j + 1] = r;
   }
-  mram_write(bufW, resM + i, (tlNrWords - i) * sizeof(uint64_t));
+  mram_write(bufW, resM, tlNrWords * sizeof(uint64_t));
   return 0;
 }
 

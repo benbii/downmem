@@ -2,7 +2,6 @@
 #include <dpu.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 
 int main(int argc, char **argv) {
   uint32_t num_elements = atoi(argv[1]);
@@ -19,7 +18,7 @@ int main(int argc, char **argv) {
   // Generate random input data
   uint32_t *input_data = malloc(num_elements * sizeof(uint32_t));
   assert(input_data != NULL);
-  srand(time(NULL));
+  srand(12345678);
   uint32_t expected_odds = 0;
   for (uint32_t i = 0; i < num_elements; i++) {
     // input_data[i] = i * 2;

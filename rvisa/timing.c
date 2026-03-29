@@ -122,7 +122,7 @@ RvTlet *RvTimingCycle(RvTiming *this, size_t nrTasklets) {
       this->PpInInstr = instr;
       this->PpInId = thread->Id;
 
-      // Handle RISC-V custom DMA instructions (LDMRAM, SDMRAM)
+      // Handle WRAM-MRAM DMA
       if (instr->Opcode == CSRRW && instr->imm == 0x803) {
         // Extract DMA parameters from registers
         uint32_t wram_addr = thread->Regs[instr->rs1] >> 16;

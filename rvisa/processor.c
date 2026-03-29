@@ -110,8 +110,10 @@ void RvDpuExecuteInstr(RvDpu* d, RvTlet* thread) {
   case ORNr: result = vs1 | ~vs2; break;                     // Bitwise OR-NOT
   case XNOR: result = ~(vs1 ^ vs2); break;                  // Bitwise XOR-NOT
   // RV32B Zbb: Rotate operations
-  case ROLr: result = (vs1 << (vs2 & 0x1F)) | (vs1 >> (32 - (vs2 & 0x1F))); break;  // Rotate left
-  case RORr: result = (vs1 >> (vs2 & 0x1F)) | (vs1 << (32 - (vs2 & 0x1F))); break;  // Rotate right
+  case ROLr: result = __builtin_rotateleft32(vs1, vs2 & 31); break;  // Rotate left
+  case RORr: result = __builtin_rotateright32(vs1, vs2 & 31); break;  // Rotate right
+  // case ROLr: result = (vs1 << (vs2 & 0x1F)) | (vs1 >> (32 - (vs2 & 0x1F))); break;  // Rotate left
+  // case RORr: result = (vs1 >> (vs2 & 0x1F)) | (vs1 << (32 - (vs2 & 0x1F))); break;  // Rotate right
 
   // Immediate variants
   case ADDI: result = vs1 + imm; break;

@@ -1,4 +1,4 @@
-#include "downmem.h"
+#include "dmm_common.h"
 #include <stdlib.h>
 #include <assert.h>
 
@@ -11,14 +11,8 @@ static void _sliceinit(_memcmdSlice* arr) {
   arr->offset = 0;
   arr->data = (_memcmd*)malloc(arr->capacity * sizeof(_memcmd));
 }
-static void _slicefree(_memcmdSlice* arr) {
-  free(arr->data);
-}
 static inline _memcmd _get(_memcmdSlice* arr, size_t index) {
   return arr->data[arr->offset + index];
-}
-static size_t _sz(_memcmdSlice* arr) {
-  return arr->size;
 }
 static void _popfront(_memcmdSlice* arr) {
   assert(arr->size > 0);
@@ -51,12 +45,12 @@ static void _push(_memcmdSlice* arr, _memcmd cmd) {
 static _memcmd _rm(_memcmdSlice* arr, size_t index) {
   assert(index < arr->size);
   _memcmd removed = arr->data[arr->offset + index];
-  if (index < arr->size - 1) {
-    // Move the element at index to the front, then remove front
-    arr->data[arr->offset + index] = arr->data[arr->offset];
-    arr->data[arr->offset] = removed;
+  if (index == arr->size - 1) {
+    arr->size--;
+    return removed;
   }
-  // Remove front element
+  arr->data[arr->offset + index] = arr->data[arr->offset];
+  arr->data[arr->offset] = removed;
   arr->offset++;
   arr->size--;
   return removed;
@@ -88,8 +82,8 @@ void DmmMramTimingInit(DmmMramTiming* mt) {
 }
 
 void DmmMramTimingFini(DmmMramTiming* mt) {
-  _slicefree(&mt->ScheRob);
-  _slicefree(&mt->ScheReadyQ);
+  free(mt->ScheRob.data);
+  free(mt->ScheReadyQ.data);
 }
 
 void DmmMramTimingPush(DmmMramTiming *mt, long begin_addr, long size,
@@ -111,7 +105,7 @@ void DmmMramTimingPush(DmmMramTiming *mt, long begin_addr, long size,
 
 static void _serveMramSched(DmmMramTiming* mt) {
   if (mt->ScheRowAddr != noAddr) {
-    for (long i = 0; _sz(&mt->ScheRob) >= i + 1 && i < ReorderWinSz; i++) {
+    for (long i = 0; mt->ScheRob.size >= i + 1 && i < ReorderWinSz; i++) {
       _memcmd memory_command = _get(&mt->ScheRob, i);
       if (memory_command.address == mt->ScheRowAddr) {
         _rm(&mt->ScheRob, i);
@@ -122,7 +116,7 @@ static void _serveMramSched(DmmMramTiming* mt) {
     }
   }
 
-  if (_sz(&mt->ScheRob) >= 1) {
+  if (mt->ScheRob.size >= 1) {
     _memcmd memcmd = _get(&mt->ScheRob, 0);
     _popfront(&mt->ScheRob);
     long wordline_addr = memcmd.address;
@@ -159,6 +153,7 @@ static void _serveRowBuf(DmmMramTiming* mt) {
     mt->RowbufBusSince = 0;
   } else if (mt->RowbufBusSince == TBl) {
     mt->AckLeft[mt->RowbufBusSlot.thrd_id]--;
+    mt->RowbufBusSlot.address = noAddr;
     mt->StatNrAccess++;
   }
 
@@ -169,7 +164,7 @@ static void _serveRowBuf(DmmMramTiming* mt) {
 
 void DmmMramTimingCycle(DmmMramTiming* mt) {
   // Move scheduling results into row buffer
-  if (mt->RowbufInSlot.address == noAddr && _sz(&mt->ScheReadyQ) >= 1) {
+  if (mt->RowbufInSlot.address == noAddr && mt->ScheReadyQ.size >= 1) {
     mt->RowbufInSlot = _get(&mt->ScheReadyQ, 0);
     _popfront(&mt->ScheReadyQ);
   }
