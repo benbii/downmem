@@ -3,7 +3,7 @@ project(downmem LANGUAGES C)
 include(GNUInstallDirs)
 
 set(DMM_MRAMXFER "interleaveLut" CACHE STRING "Select the mram simulation variant")
-option(DMM_UPMEM "upmem" ON)
+option(DMM_UPMEM "upmem" OFF)
 option(DMM_RV "hypothetical riscv upmem" ON)
 option(DMM_NUMA "Enable NUMA-aware memory allocation and thread binding" ON)
 option(DMM_TSCDUMP "Enable per-instruction overhead dumping" OFF)

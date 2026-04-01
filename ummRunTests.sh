@@ -2,11 +2,37 @@
 set -xe
 cd "$(dirname "$0")"
 
+# 检查并解压 upmem 文件夹
+THIRD_PARTY_DIR="third-party"
+UPMEM_TAR_GZ="$THIRD_PARTY_DIR/upmem-2025.1.0-Linux-x86_64.tar.gz"
+UPMEM_DIR="$THIRD_PARTY_DIR/upmem"
+
+if [ ! -d "$UPMEM_DIR" ] && [ -f "$UPMEM_TAR_GZ" ]; then
+    echo "解压 upmem..."
+    tar -xzf "$UPMEM_TAR_GZ" -C "$THIRD_PARTY_DIR"
+    if [ -d "$THIRD_PARTY_DIR/upmem-2025.1.0-Linux-x86_64" ]; then
+        mv "$THIRD_PARTY_DIR/upmem-2025.1.0-Linux-x86_64" "$UPMEM_DIR"
+    fi
+    echo "upmem 解压完成"
+elif [ ! -d "$UPMEM_DIR" ] && [ ! -f "$UPMEM_TAR_GZ" ]; then
+    echo "警告: 未找到 upmem 目录和压缩文件 $UPMEM_TAR_GZ"
+fi
+
 if test -n "$1"; then
   rm -r build || true
   mkdir -p build
+
+  OMP_INCLUDE_PATH="/usr/lib/llvm-12/lib/clang/12.0.1/include/"  
+  OMP_LIB_PATH="/usr/lib/llvm-12/lib"
+  
   cmake -GNinja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=Release \
-    -S. -Bbuild -DCMAKE_C_COMPILER="$1/bin/clang" -DDMM_UPMEM=ON -DDMM_RV=OFF
+    -S. -Bbuild \
+    -DCMAKE_C_COMPILER="$1/bin/clang" \
+    -DDMM_UPMEM=ON -DDMM_RV=OFF \
+    -DOpenMP_C_FLAGS="-fopenmp=libomp -I${OMP_INCLUDE_PATH}" \
+    -DOpenMP_C_LIB_NAMES="libomp" \
+    -DOpenMP_libomp_LIBRARY="${OMP_LIB_PATH}/libomp.so"
+
   ninja -C build all dpuExamples
   # use libomp from this llvm installation
   export LD_LIBRARY_PATH="$1/lib/x86_64-pc-linux-gnu:${LD_LIBRARY_PATH}"

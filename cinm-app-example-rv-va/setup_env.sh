@@ -1,0 +1,1 @@
+export LD_LIBRARY_PATH="/usr/lib/llvm-12/lib/:${LD_LIBRARY_PATH}"
