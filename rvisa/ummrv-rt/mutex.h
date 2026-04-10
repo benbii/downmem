@@ -14,7 +14,7 @@ typedef struct dpu_sleepmtx_t {
 
 // Spinlock that busy-waits on CSR1 bits instead of sleeping
 // (spinlock is the default mutex in umm bc it's simple as f*ck)
-typedef uint8_t mtx_t;
+typedef uint32_t mtx_t;
 
 #define DPU_SLEEPMUTEX_INITIALIZER(nthBit) {nthBit, 0, 0, 0, {}}
 #define DPU_SLEEPMUTEX_INIT(name, nthBit) \

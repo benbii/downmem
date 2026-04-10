@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
   // Generate random data
   uint32_t *input_data = malloc(num_elements * sizeof(uint32_t));
   assert(input_data != NULL);
-  srand(time(NULL));
+  srand(12345678);
   for (uint32_t i = 0; i < num_elements; i++)
     input_data[i] = rand() % (NUM_BINS * 65536);
   // Compute host-side histogram for verification
