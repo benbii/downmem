@@ -22,6 +22,7 @@ time build/dmmOPDEMO 262144 512 build/devApp/objdumps/OPDEMO.objdump 3
 time build/dmmOPDEMOF 262144 512 build/devApp/objdumps/OPDEMOF.objdump 4
 time build/dmmRED 96000000 1600 build/devApp/objdumps/RED.objdump
 time build/dmmSCAN 96000000 1600 build/devApp/objdumps/SCAN.objdump
+time build/dmmSCAN 96000000 1600 build/devApp/objdumps/SCANSSA.objdump
 time build/dmmSPMV 44444 888 build/devApp/objdumps/SPMV.objdump
 time build/dmmTRNS 2000 200 build/devApp/objdumps/TRNS.objdump
 time build/dmmTS 655360 640 build/devApp/objdumps/TS.objdump
@@ -39,6 +40,7 @@ time build/dmmOPDEMO 262144 512 build/devApp/rvbins/OPDEMO 3
 time build/dmmOPDEMOF 262144 512 build/devApp/rvbins/OPDEMOF 4
 time build/dmmRED 96000000 1600 build/devApp/rvbins/RED
 time build/dmmSCAN 96000000 1600 build/devApp/rvbins/SCAN
+time build/dmmSCAN 96000000 1600 build/devApp/rvbins/SCANSSA
 time build/dmmSPMV 44444 888 build/devApp/rvbins/SPMV
 time build/dmmTRNS 2000 200 build/devApp/rvbins/TRNS
 time build/dmmTS 655360 640 build/devApp/rvbins/TS

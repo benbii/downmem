@@ -33,7 +33,7 @@ int main(int argc, char **argv) {
   DPU_FOREACH(set, eachDpu, i) {
     dpu_prepare_xfer(eachDpu, dpuSpine + i);
   }
-  DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_FROM_DPU, "global_dpu_red", 0,
+  DPU_ASSERT(dpu_push_xfer(set, DPU_XFER_FROM_DPU, "dpuRed", 0,
                            sizeof(uint32_t), DPU_XFER_DEFAULT));
 
   // spine phase on host

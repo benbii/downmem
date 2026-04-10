@@ -1,16 +1,15 @@
 #include "moredefs.h"
 #include <alloc.h>
-#include <barrier.h>
+#include <handshake.h>
 #include <mram.h>
 
 __host uint32_t nrWord, initSum = ~0, dpuRed;
-ALL_THREADS_BARRIER_INIT();
 uint32_t tlRed[NR_TASKLETS];
 
 int main() {
   __mram_ptr uint32_t *dat = DPU_MRAM_HEAP_POINTER;
-  uint32_t nrWordTl = (nrWord + NR_TASKLETS - 1) / NR_TASKLETS;
-  uint32_t start = nrWordTl * me();
+  const uint32_t nrWordTl = (nrWord + NR_TASKLETS - 1) / NR_TASKLETS, my_id = me();
+  const uint32_t start = nrWordTl * my_id;
   uint32_t end = start + nrWordTl;
   if (end > nrWord)
     end = nrWord;
@@ -34,24 +33,21 @@ int main() {
         localSum += wramCache[j];
       }
     }
-    tlRed[me()] = localSum;
-    all_threads_barrier_wait();
-    if (me() == 0) {
-      dpuRed = 0;
-      for (uint32_t i = 0; i < NR_TASKLETS; ++i)
-        dpuRed += tlRed[i];
+
+    // No spine phase. Prim style handshake instead.
+    tlRed[my_id] = localSum;
+    if (my_id != 0) {
+      handshake_wait_for(my_id - 1);
+      tlRed[my_id] = tlRed[my_id - 1] + localSum;
     }
+    if (my_id + 1 != NR_TASKLETS)
+      handshake_notify();
+    else dpuRed = tlRed[my_id];
     return 0;
   }
 
-  // -- SPINE --
-  // get prefix sum of all previous tasklets
-  localSum = 0;
-  for (uint32_t i = 0; i < me(); ++i)
-    localSum += tlRed[i];
-
   // -- DOWNSWEEP --
-  uint32_t runningSum = localSum + initSum;
+  uint32_t runningSum = (my_id != 0 ? tlRed[my_id - 1] : 0) + initSum;
   // Process in chunks of 128 words
   for (uint32_t i = start; i + 128 <= end; i += 128) {
     mram_read(&dat[i], wramCache, 128 * sizeof(uint32_t));

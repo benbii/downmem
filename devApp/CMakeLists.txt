@@ -10,12 +10,7 @@ include(${PROJECT_SOURCE_DIR}/cmake/DmmDeviceHelpers.cmake)
 # =================================================================
 
 if(DMM_RV)
-  foreach(G NW SCAN TS)
-    add_executable(rv${G} ${G}.c)
-    rvbin_make(rv${G} 16 -flto -Og)
-    add_dependencies(dpuExamples rv${G})
-  endforeach()
-  foreach(O BFS BS COMPACT GEMV HST HSTS MLP OPDEMO OPDEMOF RED SPMV TRNS UNI VA)
+  foreach(O NW SCAN SCANSSA TS BFS BS COMPACT GEMV HST HSTS MLP OPDEMO OPDEMOF RED SPMV TRNS UNI VA)
     add_executable(rv${O} ${O}.c)
     rvbin_make(rv${O} 16 -flto -O3)
     add_dependencies(dpuExamples rv${O})
@@ -65,7 +60,7 @@ endfunction()
 
 if(DMM_UPMEM)
   # Build UPMEM programs using wrapper function
-  foreach(A BS COMPACT GEMV HST MLP OPDEMO OPDEMOF SPMV NW RED SCAN TRNS TS UNI VA VA-SIMPLE BFS)
+  foreach(A BS COMPACT GEMV HST MLP OPDEMO OPDEMOF SPMV NW RED SCAN SCANSSA TRNS TS UNI VA VA-SIMPLE BFS)
     # Add executable is not in the function to allow for dev apps with multiple files
     add_executable(ummbin${A} ${A}.c)
     upmembin_make(ummbin${A} 16)

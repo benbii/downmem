@@ -1,6 +1,5 @@
 #include "handshake.h"
 #include "syslib.h"
-
 static int32_t slots[24];
 
 // CSR7 manipulation helpers for handshake slot locking
@@ -23,7 +22,6 @@ int handshake_wait_for(sysname_t idx) {
     ;
 
   int32_t a = slots[idx];
-
   if (a == 0) {
     // First to arrive - mark as waiting
     slots[idx] = (int32_t)(my_id + 1);
@@ -61,7 +59,6 @@ int handshake_notify_for(sysname_t idx) {
     ;
 
   int32_t a = slots[idx];
-
   if (a == 0) {
     // First to arrive - mark as notifying
     slots[idx] = -(int32_t)(my_id + 1);
