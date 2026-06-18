@@ -92,6 +92,9 @@ foreach(A BS COMPACT GEMV HST MLP OPDEMO OPDEMOF SPMV NW RED SCAN TRNS TS UNI VA
   target_link_libraries(dmm${A} PRIVATE dmm)
 endforeach()
 
+add_executable(dmmLLAMA_GEMV_F32 hostApp/LLAMA_GEMV_F32.c)
+target_link_libraries(dmmLLAMA_GEMV_F32 PRIVATE dmm m)
+
 add_executable(dmmBFS hostApp/BFS/cpubfs.c
   hostApp/BFS/dpubfsHost.c hostApp/BFS/main.c)
 target_link_libraries(dmmBFS PRIVATE dmm)
