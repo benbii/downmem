@@ -35,6 +35,9 @@ if(DMM_RV)
     rvbin_make(rv${O} 16 -flto -O3)
     add_dependencies(dpuExamples rv${O})
   endforeach()
+  add_executable(rvLLAMA_GEMV_F32 LLAMA_GEMV_F32.c)
+  rvbin_make(rvLLAMA_GEMV_F32 16 -flto -O3)
+  add_dependencies(dpuExamples rvLLAMA_GEMV_F32)
 endif()
 
 # =================================================================
@@ -87,4 +90,3 @@ if(DMM_UPMEM)
     add_dependencies(dpuExamples umm${A})
   endforeach()
 endif()
-
