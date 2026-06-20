@@ -7,6 +7,7 @@ typedef struct {
   uint32_t k_pad;
   uint32_t n_rows;
   uint32_t max_rows;
+  uint32_t m;
   uint32_t a_offset;
   uint32_t x_offset;
   uint32_t y_offset;
@@ -35,6 +36,7 @@ int main(void) {
   const uint32_t k = DPU_INPUT_ARGUMENTS.k;
   const uint32_t k_pad = DPU_INPUT_ARGUMENTS.k_pad;
   const uint32_t n_rows = DPU_INPUT_ARGUMENTS.n_rows;
+  const uint32_t m = DPU_INPUT_ARGUMENTS.m;
   const uint32_t a_offset = DPU_INPUT_ARGUMENTS.a_offset;
   const uint32_t x_offset = DPU_INPUT_ARGUMENTS.x_offset;
   const uint32_t y_offset = DPU_INPUT_ARGUMENTS.y_offset;
@@ -50,32 +52,34 @@ int main(void) {
   const uint32_t row_end = row_start + row_count;
 
   for (uint32_t row = row_start; row < row_end; ++row) {
-    float sum = 0.0f;
+    for (uint32_t out_col = 0; out_col < m; ++out_col) {
+      float sum = 0.0f;
 
-    for (uint32_t col = 0; col < k; col += LLAMA_GEMV_CHUNK_FLOATS) {
-      uint32_t chunk = k - col;
-      if (chunk > LLAMA_GEMV_CHUNK_FLOATS) {
-        chunk = LLAMA_GEMV_CHUNK_FLOATS;
+      for (uint32_t col = 0; col < k; col += LLAMA_GEMV_CHUNK_FLOATS) {
+        uint32_t chunk = k - col;
+        if (chunk > LLAMA_GEMV_CHUNK_FLOATS) {
+          chunk = LLAMA_GEMV_CHUNK_FLOATS;
+        }
+
+        const uint32_t bytes = chunk * sizeof(float);
+        const uintptr_t a_addr = (uintptr_t)DPU_MRAM_HEAP_POINTER + a_offset +
+                                 (row * k_pad + col) * sizeof(float);
+        const uintptr_t x_addr = (uintptr_t)DPU_MRAM_HEAP_POINTER + x_offset +
+                                 (out_col * k_pad + col) * sizeof(float);
+
+        mram_read((__mram_ptr void const *)a_addr, a_buf, bytes);
+        mram_read((__mram_ptr void const *)x_addr, x_buf, bytes);
+
+        for (uint32_t i = 0; i < chunk; ++i) {
+          sum += a_buf[i] * x_buf[i];
+        }
       }
 
-      const uint32_t bytes = chunk * sizeof(float);
-      const uintptr_t a_addr = (uintptr_t)DPU_MRAM_HEAP_POINTER + a_offset +
-                               (row * k_pad + col) * sizeof(float);
-      const uintptr_t x_addr =
-          (uintptr_t)DPU_MRAM_HEAP_POINTER + x_offset + col * sizeof(float);
-
-      mram_read((__mram_ptr void const *)a_addr, a_buf, bytes);
-      mram_read((__mram_ptr void const *)x_addr, x_buf, bytes);
-
-      for (uint32_t i = 0; i < chunk; ++i) {
-        sum += a_buf[i] * x_buf[i];
-      }
+      y_buf[0] = sum;
+      const uintptr_t y_addr = (uintptr_t)DPU_MRAM_HEAP_POINTER + y_offset +
+                               (row * m + out_col) * sizeof(float);
+      mram_write(y_buf, (__mram_ptr void *)y_addr, sizeof(float));
     }
-
-    y_buf[0] = sum;
-    const uintptr_t y_addr =
-        (uintptr_t)DPU_MRAM_HEAP_POINTER + y_offset + row * sizeof(float);
-    mram_write(y_buf, (__mram_ptr void *)y_addr, sizeof(float));
   }
 
   return 0;

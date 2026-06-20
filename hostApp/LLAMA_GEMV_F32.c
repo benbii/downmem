@@ -11,6 +11,7 @@ typedef struct {
   uint32_t k_pad;
   uint32_t n_rows;
   uint32_t max_rows;
+  uint32_t m;
   uint32_t a_offset;
   uint32_t x_offset;
   uint32_t y_offset;
@@ -30,19 +31,21 @@ static float pattern_a(uint32_t row, uint32_t col) {
   return (float)v * 0.03125f;
 }
 
-static float pattern_x(uint32_t col) {
-  const int v = (int)((col * 19u + 5u) % 29u) - 14;
+static float pattern_x(uint32_t out_col, uint32_t k_col) {
+  const int v = (int)((out_col * 11u + k_col * 19u + 5u) % 29u) - 14;
   return (float)v * 0.0625f;
 }
 
-static void host_gemv(const float *a, const float *x, float *y, uint32_t n,
-                      uint32_t k) {
-  for (uint32_t row = 0; row < n; ++row) {
-    float sum = 0.0f;
-    for (uint32_t col = 0; col < k; ++col) {
-      sum += a[row * k + col] * x[col];
+static void host_mul_mat(const float *a, const float *x, float *y,
+                         uint32_t n, uint32_t k, uint32_t m) {
+  for (uint32_t out_col = 0; out_col < m; ++out_col) {
+    for (uint32_t row = 0; row < n; ++row) {
+      float sum = 0.0f;
+      for (uint32_t col = 0; col < k; ++col) {
+        sum += a[row * k + col] * x[out_col * k + col];
+      }
+      y[(size_t)out_col * n + row] = sum;
     }
-    y[row] = sum;
   }
 }
 
@@ -52,7 +55,7 @@ static int nearly_equal(float got, float expected) {
   return diff <= 1.0e-4f || diff <= scale * 1.0e-4f;
 }
 
-static int run_case(uint32_t n, uint32_t k, uint32_t nr_dpus,
+static int run_case(uint32_t n, uint32_t k, uint32_t m, uint32_t nr_dpus,
                     const char *dpu_binary) {
   struct dpu_set_t set;
 
@@ -83,29 +86,34 @@ static int run_case(uint32_t n, uint32_t k, uint32_t nr_dpus,
   }
 
   const uint32_t a_floats_per_dpu = max_rows * k_pad;
-  const uint32_t x_floats_per_dpu = k_pad;
-  const uint32_t y_floats_per_dpu = max_rows;
+  const uint32_t x_floats_per_dpu = k_pad * m;
+  const uint32_t y_floats_per_dpu = max_rows * m;
   const uint32_t a_bytes = a_floats_per_dpu * sizeof(float);
   const uint32_t x_bytes = x_floats_per_dpu * sizeof(float);
   const uint32_t y_bytes = y_floats_per_dpu * sizeof(float);
 
   float *a = calloc((size_t)n * k, sizeof(float));
-  float *x = calloc(k_pad, sizeof(float));
-  float *y_ref = calloc(n, sizeof(float));
-  float *y_dpu_padded = calloc((size_t)nr_dpus * max_rows, sizeof(float));
+  float *x = calloc((size_t)m * k, sizeof(float));
+  float *x_padded = calloc(x_floats_per_dpu, sizeof(float));
+  float *y_ref = calloc((size_t)n * m, sizeof(float));
+  float *y_dpu_padded = calloc((size_t)nr_dpus * y_floats_per_dpu, sizeof(float));
   float *a_padded = calloc((size_t)nr_dpus * a_floats_per_dpu, sizeof(float));
-  assert(a != NULL && x != NULL && y_ref != NULL && y_dpu_padded != NULL &&
-         a_padded != NULL);
+  assert(a != NULL && x != NULL && x_padded != NULL && y_ref != NULL &&
+         y_dpu_padded != NULL && a_padded != NULL);
 
   for (uint32_t row = 0; row < n; ++row) {
     for (uint32_t col = 0; col < k; ++col) {
       a[row * k + col] = pattern_a(row, col);
     }
   }
-  for (uint32_t col = 0; col < k; ++col) {
-    x[col] = pattern_x(col);
+  for (uint32_t out_col = 0; out_col < m; ++out_col) {
+    for (uint32_t col = 0; col < k; ++col) {
+      const float value = pattern_x(out_col, col);
+      x[out_col * k + col] = value;
+      x_padded[out_col * k_pad + col] = value;
+    }
   }
-  host_gemv(a, x, y_ref, n, k);
+  host_mul_mat(a, x, y_ref, n, k, m);
 
   for (uint32_t d = 0; d < nr_dpus; ++d) {
     for (uint32_t row = 0; row < layout[d].rows; ++row) {
@@ -118,6 +126,7 @@ static int run_case(uint32_t n, uint32_t k, uint32_t nr_dpus,
         .k_pad = k_pad,
         .n_rows = layout[d].rows,
         .max_rows = max_rows,
+        .m = m,
         .a_offset = 0,
         .x_offset = a_bytes,
         .y_offset = a_bytes + x_bytes,
@@ -138,15 +147,15 @@ static int run_case(uint32_t n, uint32_t k, uint32_t nr_dpus,
   DMM_VERIFY(dpu_push_xfer(set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0,
                            a_bytes, DPU_XFER_DEFAULT));
 
-  DMM_VERIFY(dpu_broadcast_to(set, DPU_MRAM_HEAP_POINTER_NAME, a_bytes, x,
-                              x_bytes, DPU_XFER_DEFAULT));
+  DMM_VERIFY(dpu_broadcast_to(set, DPU_MRAM_HEAP_POINTER_NAME, a_bytes,
+                              x_padded, x_bytes, DPU_XFER_DEFAULT));
 
   DMM_VERIFY(dpu_launch(set, DPU_SYNCHRONOUS));
 
   idx = 0;
   DPU_FOREACH(set, each, idx) {
-    DMM_VERIFY(
-        dpu_prepare_xfer(each, y_dpu_padded + (size_t)idx * max_rows));
+    DMM_VERIFY(dpu_prepare_xfer(each,
+                                y_dpu_padded + (size_t)idx * y_floats_per_dpu));
   }
   DMM_VERIFY(dpu_push_xfer(set, DPU_XFER_FROM_DPU, DPU_MRAM_HEAP_POINTER_NAME,
                            a_bytes + x_bytes, y_bytes, DPU_XFER_DEFAULT));
@@ -155,13 +164,17 @@ static int run_case(uint32_t n, uint32_t k, uint32_t nr_dpus,
   for (uint32_t d = 0; d < nr_dpus; ++d) {
     for (uint32_t row = 0; row < layout[d].rows; ++row) {
       const uint32_t global_row = layout[d].row_offset + row;
-      const float got = y_dpu_padded[(size_t)d * max_rows + row];
-      const float expected = y_ref[global_row];
-      if (!nearly_equal(got, expected)) {
-        fprintf(stderr, "case n=%u k=%u dpus=%u row=%u expected=%g got=%g\n",
-                n, k, nr_dpus, global_row, expected, got);
-        ok = 0;
-        goto done;
+      for (uint32_t out_col = 0; out_col < m; ++out_col) {
+        const float got = y_dpu_padded[(size_t)d * y_floats_per_dpu +
+                                       (size_t)row * m + out_col];
+        const float expected = y_ref[(size_t)out_col * n + global_row];
+        if (!nearly_equal(got, expected)) {
+          fprintf(stderr,
+                  "case n=%u k=%u m=%u dpus=%u row=%u out_col=%u expected=%g got=%g\n",
+                  n, k, m, nr_dpus, global_row, out_col, expected, got);
+          ok = 0;
+          goto done;
+        }
       }
     }
   }
@@ -169,6 +182,7 @@ static int run_case(uint32_t n, uint32_t k, uint32_t nr_dpus,
 done:
   free(a);
   free(x);
+  free(x_padded);
   free(y_ref);
   free(y_dpu_padded);
   free(a_padded);
@@ -186,10 +200,11 @@ int main(int argc, char **argv) {
 
   const char *dpu_binary = argv[1];
   int failed = 0;
-  failed |= run_case(8, 16, 1, dpu_binary);
-  failed |= run_case(17, 31, 4, dpu_binary);
-  failed |= run_case(33, 64, 6, dpu_binary);
-  failed |= run_case(3, 7, 8, dpu_binary);
+  failed |= run_case(8, 16, 1, 1, dpu_binary);
+  failed |= run_case(17, 31, 1, 4, dpu_binary);
+  failed |= run_case(17, 31, 3, 4, dpu_binary);
+  failed |= run_case(33, 64, 5, 6, dpu_binary);
+  failed |= run_case(3, 7, 4, 8, dpu_binary);
 
   if (failed != 0) {
     fprintf(stderr, "LLAMA_GEMV_F32 failed\n");
