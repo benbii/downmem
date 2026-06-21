@@ -6,15 +6,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define LLAMA_DOWNMEM_OP_MUL_MAT_F32 0u
+#define LLAMA_DOWNMEM_OP_SCALE_F32 1u
+
 typedef struct {
+  uint32_t opcode;
   uint32_t k;
   uint32_t k_pad;
   uint32_t n_rows;
   uint32_t max_rows;
   uint32_t m;
+  uint32_t n_elems;
+  uint32_t max_elems;
   uint32_t a_offset;
   uint32_t x_offset;
   uint32_t y_offset;
+  float scale;
+  float bias;
 } llama_gemv_f32_args_t;
 
 typedef struct {
@@ -47,6 +55,18 @@ static void host_mul_mat(const float *a, const float *x, float *y,
       y[(size_t)out_col * n + row] = sum;
     }
   }
+}
+
+static void host_scale_f32(const float *x, float *y, uint32_t n,
+                           float scale, float bias) {
+  for (uint32_t i = 0; i < n; ++i) {
+    y[i] = x[i] * scale + bias;
+  }
+}
+
+static float pattern_scale_x(uint32_t i) {
+  const int v = (int)((i * 37u + 11u) % 41u) - 20;
+  return (float)v * 0.03125f;
 }
 
 static int nearly_equal(float got, float expected) {
@@ -122,14 +142,19 @@ static int run_case(uint32_t n, uint32_t k, uint32_t m, uint32_t nr_dpus,
              a + (size_t)global_row * k, k * sizeof(float));
     }
     args[d] = (llama_gemv_f32_args_t){
+        .opcode = LLAMA_DOWNMEM_OP_MUL_MAT_F32,
         .k = k,
         .k_pad = k_pad,
         .n_rows = layout[d].rows,
         .max_rows = max_rows,
         .m = m,
+        .n_elems = 0,
+        .max_elems = 0,
         .a_offset = 0,
         .x_offset = a_bytes,
         .y_offset = a_bytes + x_bytes,
+        .scale = 0.0f,
+        .bias = 0.0f,
     };
   }
 
@@ -192,6 +217,121 @@ done:
   return ok ? 0 : 1;
 }
 
+static int run_scale_case(uint32_t n, uint32_t nr_dpus,
+                          const char *dpu_binary,
+                          float scale, float bias) {
+  struct dpu_set_t set;
+
+  DMM_VERIFY(dpu_alloc(nr_dpus, NULL, &set));
+  DMM_VERIFY(dpu_load(set, dpu_binary, NULL));
+
+  uint32_t actual_dpus = 0;
+  DMM_VERIFY(dpu_get_nr_dpus(set, &actual_dpus));
+  assert(actual_dpus == nr_dpus);
+
+  dpu_rows_t *layout = calloc(nr_dpus, sizeof(*layout));
+  llama_gemv_f32_args_t *args = calloc(nr_dpus, sizeof(*args));
+  assert(layout != NULL && args != NULL);
+
+  uint32_t max_elems = 0;
+  for (uint32_t d = 0; d < nr_dpus; ++d) {
+    const uint32_t base = n / nr_dpus;
+    const uint32_t rest = n % nr_dpus;
+    layout[d].rows = base + (d < rest ? 1u : 0u);
+    layout[d].row_offset = d * base + (d < rest ? d : rest);
+    if (layout[d].rows > max_elems) {
+      max_elems = layout[d].rows;
+    }
+  }
+  if (max_elems == 0) {
+    max_elems = 1;
+  }
+
+  const uint32_t x_bytes = max_elems * sizeof(float);
+  const uint32_t y_bytes = max_elems * sizeof(float);
+
+  float *x = calloc(n, sizeof(float));
+  float *x_padded = calloc((size_t)nr_dpus * max_elems, sizeof(float));
+  float *y_ref = calloc(n, sizeof(float));
+  float *y_dpu_padded = calloc((size_t)nr_dpus * max_elems, sizeof(float));
+  assert(x != NULL && x_padded != NULL && y_ref != NULL && y_dpu_padded != NULL);
+
+  for (uint32_t i = 0; i < n; ++i) {
+    x[i] = pattern_scale_x(i);
+  }
+  host_scale_f32(x, y_ref, n, scale, bias);
+
+  for (uint32_t d = 0; d < nr_dpus; ++d) {
+    memcpy(x_padded + (size_t)d * max_elems,
+           x + layout[d].row_offset,
+           layout[d].rows * sizeof(float));
+    args[d] = (llama_gemv_f32_args_t){
+        .opcode = LLAMA_DOWNMEM_OP_SCALE_F32,
+        .k = 0,
+        .k_pad = 0,
+        .n_rows = 0,
+        .max_rows = 0,
+        .m = 0,
+        .n_elems = layout[d].rows,
+        .max_elems = max_elems,
+        .a_offset = 0,
+        .x_offset = 0,
+        .y_offset = x_bytes,
+        .scale = scale,
+        .bias = bias,
+    };
+  }
+
+  struct dpu_set_t each;
+  uint32_t idx = 0;
+  DPU_FOREACH(set, each, idx) {
+    DMM_VERIFY(dpu_prepare_xfer(each, args + idx));
+  }
+  DMM_VERIFY(dpu_push_xfer(set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0,
+                           sizeof(llama_gemv_f32_args_t), DPU_XFER_DEFAULT));
+
+  idx = 0;
+  DPU_FOREACH(set, each, idx) {
+    DMM_VERIFY(dpu_prepare_xfer(each, x_padded + (size_t)idx * max_elems));
+  }
+  DMM_VERIFY(dpu_push_xfer(set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME,
+                           0, x_bytes, DPU_XFER_DEFAULT));
+
+  DMM_VERIFY(dpu_launch(set, DPU_SYNCHRONOUS));
+
+  idx = 0;
+  DPU_FOREACH(set, each, idx) {
+    DMM_VERIFY(dpu_prepare_xfer(each, y_dpu_padded + (size_t)idx * max_elems));
+  }
+  DMM_VERIFY(dpu_push_xfer(set, DPU_XFER_FROM_DPU, DPU_MRAM_HEAP_POINTER_NAME,
+                           x_bytes, y_bytes, DPU_XFER_DEFAULT));
+
+  int ok = 1;
+  for (uint32_t d = 0; d < nr_dpus; ++d) {
+    for (uint32_t i = 0; i < layout[d].rows; ++i) {
+      const uint32_t global = layout[d].row_offset + i;
+      const float got = y_dpu_padded[(size_t)d * max_elems + i];
+      if (!nearly_equal(got, y_ref[global])) {
+        fprintf(stderr,
+                "scale case n=%u dpus=%u i=%u expected=%g got=%g\n",
+                n, nr_dpus, global, y_ref[global], got);
+        ok = 0;
+        goto done;
+      }
+    }
+  }
+
+done:
+  free(x);
+  free(x_padded);
+  free(y_ref);
+  free(y_dpu_padded);
+  free(layout);
+  free(args);
+  DMM_VERIFY(dpu_free(set));
+  return ok ? 0 : 1;
+}
+
 int main(int argc, char **argv) {
   if (argc != 2) {
     fprintf(stderr, "usage: %s /path/to/LLAMA_GEMV_F32\n", argv[0]);
@@ -205,6 +345,9 @@ int main(int argc, char **argv) {
   failed |= run_case(17, 31, 3, 4, dpu_binary);
   failed |= run_case(33, 64, 5, 6, dpu_binary);
   failed |= run_case(3, 7, 4, 8, dpu_binary);
+  failed |= run_scale_case(17, 4, dpu_binary, 1.25f, -0.5f);
+  failed |= run_scale_case(64, 1, dpu_binary, -0.75f, 0.125f);
+  failed |= run_scale_case(3, 8, dpu_binary, 0.5f, 2.0f);
 
   if (failed != 0) {
     fprintf(stderr, "LLAMA_GEMV_F32 failed\n");
