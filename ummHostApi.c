@@ -112,8 +112,8 @@ static void _unload(struct dpu_set_t set) {
 
 dpu_error_t dpu_free(struct dpu_set_t set) {
   _unload(set);
-  printf("Freed %zu DPU, Exec %zuusec, Xfer %zuusec till now\n",
-         set.end - set.begin, DmmTotExecUsec, DmmTotXferUsec);
+  fprintf(stderr, "Freed %zu DPU, Exec %zuusec, Xfer %zuusec till now\n",
+          set.end - set.begin, DmmTotExecUsec, DmmTotXferUsec);
   for (size_t i = set.begin; i < set.end; ++i) {
     struct DmmDpu* d = _dptr(i, set);
     if (d->Is == UMM_DPUIS) UmmDpuFini(&d->U);

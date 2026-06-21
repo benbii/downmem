@@ -3,7 +3,7 @@ project(downmem LANGUAGES C)
 include(GNUInstallDirs)
 
 set(DMM_MRAMXFER "interleaveLut" CACHE STRING "Select the mram simulation variant")
-option(DMM_UPMEM "upmem" ON)
+option(DMM_UPMEM "upmem" OFF)
 option(DMM_RV "hypothetical riscv upmem" ON)
 option(DMM_NUMA "Enable NUMA-aware memory allocation and thread binding" ON)
 option(DMM_TSCDUMP "Enable per-instruction overhead dumping" OFF)
@@ -100,6 +100,9 @@ foreach(A BS COMPACT GEMV HST MLP OPDEMO OPDEMOF SPMV NW RED SCAN TRNS TS UNI VA
   add_executable(dmm${A} hostApp/${A}.c)
   target_link_libraries(dmm${A} PRIVATE dmm)
 endforeach()
+
+add_executable(dmmLLAMA_GEMV_F32 hostApp/LLAMA_GEMV_F32.c)
+target_link_libraries(dmmLLAMA_GEMV_F32 PRIVATE dmm m)
 
 add_executable(dmmBFS hostApp/BFS/cpubfs.c
   hostApp/BFS/dpubfsHost.c hostApp/BFS/main.c)
